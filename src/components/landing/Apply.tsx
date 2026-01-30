@@ -1,8 +1,11 @@
 import { Section } from '../ui/Section';
 import { SectionTitle } from '../ui/SectionTitle';
 import { Container } from '../ui/Container';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '../ui/Button';
 
 export default function Apply() {
+    const navigate = useNavigate();
     const steps = [
         { stage: 0, title: "Choose a Functional Committee" },
         { stage: 1, title: "Submit your application form" },
@@ -42,8 +45,17 @@ export default function Apply() {
                     </div>
 
                     <div className="mt-12 text-center">
-                        <div className="inline-block bg-brand-yellow/10 text-brand-orange px-8 py-3 rounded-full font-bold text-lg animate-pulse">
+                        <div className="inline-block bg-brand-yellow/10 text-brand-orange px-8 py-3 rounded-full font-bold text-lg animate-pulse mb-8">
                             Reach Stage 4 to be a YQL!
+                        </div>
+                        <div>
+                            <Button
+                                onClick={() => navigate('/login')}
+                                variant="geometric-primary"
+                                size="lg"
+                            >
+                                Log in to Apply
+                            </Button>
                         </div>
                     </div>
                 </div>

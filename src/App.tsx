@@ -1,31 +1,56 @@
-import Navbar from './components/landing/Navbar';
-import Hero from './components/landing/Hero';
-import About from './components/landing/About';
-import Mission from './components/landing/Mission';
-import WhoCanApply from './components/landing/WhoCanApply';
-import HowItWorks from './components/landing/HowItWorks';
-import Committees from './components/landing/Committees';
-import Benefits from './components/landing/Benefits';
-import Commitment from './components/landing/Commitment';
-import Apply from './components/landing/Apply';
-import Footer from './components/landing/Footer';
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import LandingPage from "./pages/LandingPage";
+import LoginPage from "./pages/auth/LoginPage";
+import RegisterPage from "./pages/auth/RegisterPage";
+
+import DashboardLayout from "./layouts/DashboardLayout";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import ReviewerDashboard from "./pages/reviewer/ReviewerDashboard";
+import ApplicantDashboard from "./pages/applicant/ApplicantDashboard";
+import { getAuthUser } from "./lib/auth";
+
+// Protected Route wrapper
+function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) {
+  const user = getAuthUser();
+  if (!user) return <Navigate to="/login" replace />;
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    // Redirect to correct dashboard if trying to access wrong one
+    if (user.role === 'admin') return <Navigate to="/admin" replace />;
+    if (user.role === 'reviewer') return <Navigate to="/reviewer" replace />;
+    return <Navigate to="/applicant" replace />;
+  }
+  return <>{children}</>;
+}
 
 function App() {
   return (
-    <div className="bg-brand-bgLight min-h-screen text-brand-blueDark font-sans selection:bg-brand-yellow/30 selection:text-brand-blueDark">
-      <Navbar />
-      <Hero />
-      <About />
-      <Mission />
-      <WhoCanApply />
-      <HowItWorks />
-      <Committees />
-      <Benefits />
-      <Commitment />
-      <Apply />
-      <Footer />
-    </div>
-  )
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+
+
+        <Route element={<DashboardLayout />}>
+          <Route path="/admin" element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/reviewer" element={
+            <ProtectedRoute allowedRoles={['reviewer']}>
+              <ReviewerDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/applicant" element={
+            <ProtectedRoute allowedRoles={['applicant']}>
+              <ApplicantDashboard />
+            </ProtectedRoute>
+          } />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
-export default App
+export default App;

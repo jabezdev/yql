@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Container, Button } from '../ui';
 import { NAV_LINKS } from '../../constants';
 
 export default function Navbar() {
     const [isOpen, setIsOpen] = useState(false);
+    const navigate = useNavigate();
 
     const closeMenu = () => setIsOpen(false);
 
@@ -29,13 +31,12 @@ export default function Navbar() {
                         </a>
                     ))}
                     <Button
-                        as="a"
-                        href="#apply"
+                        onClick={() => navigate('/login')}
                         variant="geometric-primary"
                         size="md"
                         className="py-2"
                     >
-                        Apply Now
+                        Log in
                     </Button>
                 </div>
 
@@ -63,14 +64,15 @@ export default function Navbar() {
                         </a>
                     ))}
                     <Button
-                        as="a"
-                        href="#apply"
                         fullWidth
                         variant="geometric-primary"
                         size="lg"
-                        onClick={closeMenu}
+                        onClick={() => {
+                            closeMenu();
+                            navigate('/login');
+                        }}
                     >
-                        Apply Now
+                        Log in
                     </Button>
                 </div>
             )}

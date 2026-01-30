@@ -138,19 +138,19 @@ export default function Hero() {
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
                         <Button
                             as="a"
-                            href="#apply"
-                            variant="geometric-primary"
-                            size="lg"
-                        >
-                            Apply Now
-                        </Button>
-                        <Button
-                            as="a"
                             href="#about"
                             variant="geometric-secondary"
                             size="lg"
                         >
-                            Learn More →
+                            Learn More
+                        </Button>
+                        <Button
+                            as="a"
+                            href="#apply"
+                            variant="geometric-primary"
+                            size="lg"
+                        >
+                            Apply Now →
                         </Button>
                     </div>
                 </div>
