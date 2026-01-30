@@ -2,11 +2,13 @@ import { useState } from "react";
 import DynamicForm, { type FormField } from "./DynamicForm";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { getAuthUser } from "../../lib/auth";
 
 interface PipelineStage {
     id: string;
     name: string;
     type: string;
+    kind?: string;
     description?: string;
     formConfig?: FormField[];
 }
@@ -19,9 +21,9 @@ interface DynamicPipelineRendererProps {
 }
 
 export default function DynamicPipelineRenderer({ application, cohort }: DynamicPipelineRendererProps) {
-    const updateApp = useMutation(api.applications.updateApplicationData);
-    const updateStage = useMutation(api.applications.updateStage);
+    const submitStage = useMutation(api.applications.submitStage);
     const [isSaving, setIsSaving] = useState(false);
+    const user = getAuthUser();
 
     // Find current stage config from cohort pipeline
     const currentStageConfig = cohort.pipeline.find((p: PipelineStage) => p.id === application.currentStageId);
@@ -30,45 +32,32 @@ export default function DynamicPipelineRenderer({ application, cohort }: Dynamic
         return <div className="p-4 text-red-500">Error: Invalid Stage Configuration</div>;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleFormSubmit = async (data: any) => {
+    const handleFormSubmit = async (data: Record<string, unknown>) => {
+        if (!user || !user.token) {
+            alert("You are not logged in.");
+            return;
+        }
         setIsSaving(true);
         try {
-            // Save form data into stageData keyed by stage ID
-            const newStageData = {
-                ...application.stageData,
-                [currentStageConfig.id]: data
-            };
-
-            // 1. Save Data
-            await updateApp({
+            await submitStage({
+                token: user.token,
                 applicationId: application._id,
-                stageData: newStageData
+                stageId: currentStageConfig.id,
+                data
             });
-
-            // 2. Auto-advance if it's a form? 
-            // For now, let's just save. Maybe show a "Next Stage" button or auto-advance.
-            // Let's implement a simple "Complete Stage" logic.
-
-            // Find next stage
-            const currentIndex = cohort.pipeline.findIndex((p: PipelineStage) => p.id === currentStageConfig.id);
-            const nextStage = cohort.pipeline[currentIndex + 1];
-
-            if (nextStage) {
-                await updateStage({ applicationId: application._id, stage: nextStage.id });
-            }
-
-            // Reload or let React Query handle it
+            // Result is handled by reactivity (application prop updates)
         } catch (err) {
             console.error(err);
-            alert("Failed to save");
+            alert("Failed to save: " + (err instanceof Error ? err.message : "Unknown error"));
         } finally {
             setIsSaving(false);
         }
     };
 
-    // Render based on type
-    if (currentStageConfig.type === 'form' && currentStageConfig.formConfig) {
+    // Render based on type or kind
+    const renderType = (currentStageConfig.kind || currentStageConfig.type);
+
+    if (renderType === 'form' && currentStageConfig.formConfig) {
         // Get existing data for this stage
         const existingData = application.stageData?.[currentStageConfig.id] || {};
 
@@ -88,25 +77,21 @@ export default function DynamicPipelineRenderer({ application, cohort }: Dynamic
         );
     }
 
-    if (currentStageConfig.type === 'static' || currentStageConfig.type === 'interview') {
+    if (renderType === 'static' || renderType === 'interview' || renderType === 'agreement') {
         return (
             <div className="text-center py-8">
                 <h3 className="text-xl font-bold mb-2">{currentStageConfig.name}</h3>
-                <p className="text-gray-600 mb-6 max-w-lg mx-auto">{currentStageConfig.description}</p>
+                <p className="text-gray-600 mb-6 max-w-lg mx-auto whitespace-pre-line">{currentStageConfig.description}</p>
 
-                {/* For static stages, maybe an admin has to move them manually? 
-                    Or the user clicks "I have completed this"? 
-                    For MVP flexible arch, let's assume manual admin move for non-forms 
-                    OR a simple "Done" button if self-paced.
-                */}
+                {/* Status or completion button */}
                 <div className="bg-blue-50 p-4 rounded text-blue-800 text-sm inline-block">
-                    Please wait for an admin to review your application or for the next scheduled session.
+                    There are no forms to fill for this step. Please follow the instructions above or wait for admin review.
                 </div>
             </div>
         );
     }
 
-    if (currentStageConfig.type === 'completed') {
+    if (renderType === 'completed') {
         return (
             <div className="text-center py-10">
                 <h3 className="text-3xl font-bold mb-4 text-green-600">You are an official YQL Volunteer!</h3>
@@ -115,5 +100,5 @@ export default function DynamicPipelineRenderer({ application, cohort }: Dynamic
         );
     }
 
-    return <div>Unknown Stage Type: {currentStageConfig.type}</div>;
+    return <div>Unknown Stage Type: {renderType}</div>;
 }

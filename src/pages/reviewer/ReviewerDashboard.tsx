@@ -4,9 +4,9 @@ import { api } from "../../../convex/_generated/api";
 import { getAuthUser } from "../../lib/auth";
 
 export default function ReviewerDashboard() {
-    const applications = useQuery(api.applications.getAllApplications);
-    const submitReview = useMutation(api.reviews.submitReview);
     const user = getAuthUser();
+    const applications = useQuery(api.applications.getAllApplications, { token: user?.token || "" });
+    const submitReview = useMutation(api.reviews.submitReview);
     const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
     const [score, setScore] = useState(0);
     const [notes, setNotes] = useState("");
@@ -18,8 +18,8 @@ export default function ReviewerDashboard() {
         if (!selectedAppId || !user) return;
 
         await submitReview({
+            token: user.token,
             applicationId: selectedAppId as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-            reviewerId: user._id,
             score,
             notes
         });

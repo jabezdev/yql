@@ -1,17 +1,20 @@
 import { v } from "convex/values";
 import { mutation } from "./_generated/server";
+import { ensureReviewer } from "./auth";
 
 export const submitReview = mutation({
     args: {
+        token: v.string(),
         applicationId: v.id("applications"),
-        reviewerId: v.id("users"),
+        // reviewerId removed, derived from token
         score: v.number(),
         notes: v.string(),
     },
     handler: async (ctx, args) => {
+        const user = await ensureReviewer(ctx, args.token);
         await ctx.db.insert("reviews", {
             applicationId: args.applicationId,
-            reviewerId: args.reviewerId,
+            reviewerId: user._id, // FORCE use authenticated user
             score: args.score,
             notes: args.notes,
             createdAt: Date.now(),

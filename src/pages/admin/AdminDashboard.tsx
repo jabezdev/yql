@@ -1,73 +1,99 @@
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { getAuthUser } from "../../lib/auth";
 import { useState } from "react";
-
-import CohortManager from "./CohortManager";
+import { Plus, UploadCloud } from "lucide-react";
 
 export default function AdminDashboard() {
-    const applications = useQuery(api.applications.getAllApplications);
-    const reviewers = useQuery(api.users.getReviewers);
+    const user = getAuthUser();
+    const activeCohort = useQuery(api.cohorts.getActiveCohort);
+    // Pass token to queries if they require it (getAllApplications requires it now)
+    const applications = useQuery(api.applications.getAllApplications, { token: user?.token || "", cohortId: activeCohort?._id });
+    const reviewers = useQuery(api.users.getReviewers, { token: user?.token || "", cohortId: activeCohort?._id });
+
     const updateStage = useMutation(api.applications.updateStage);
     const updateStatus = useMutation(api.applications.updateStatus);
     const createReviewer = useMutation(api.users.createReviewer);
+    const onboardUser = useMutation(api.users.onboardUser);
 
     const [activeTab, setActiveTab] = useState<string>('applicants');
 
+    // Reviewer Form State
     const [revName, setRevName] = useState("");
     const [revEmail, setRevEmail] = useState("");
     const [revPass, setRevPass] = useState("");
-    const user = getAuthUser();
 
-    // Render logic based on tab
-    if (activeTab === 'cohorts') {
-        return (
-            <div className="space-y-4">
-                <div className="flex gap-4 mb-4 border-b pb-2">
-                    <button onClick={() => setActiveTab('applicants')} className="text-gray-500 hover:text-brand-blue">Applicants</button>
-                    <button onClick={() => setActiveTab('reviewers')} className="text-gray-500 hover:text-brand-blue">Reviewers</button>
-                    <button onClick={() => setActiveTab('cohorts')} className="font-bold text-brand-blue border-b-2 border-brand-blue">Cohorts</button>
-                </div>
-                <CohortManager />
-            </div>
-        )
-    }
+    // Import User State
+    const [showImport, setShowImport] = useState(false);
+    const [impName, setImpName] = useState("");
+    const [impEmail, setImpEmail] = useState("");
+    const [impStage, setImpStage] = useState("agreement");
 
-    // Default View (will refactor later to cleaner layout)
+    // const user = getAuthUser(); // Removed duplicate
+
     if (!applications) return <div>Loading applications...</div>;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleStageChange = async (appId: any, stage: any) => {
+    const handleStageChange = async (appId: Id<"applications">, stage: string) => {
         if (confirm(`Are you sure you want to move this applicant to ${stage}?`)) {
-            await updateStage({ applicationId: appId, stage });
+            await updateStage({ token: user?.token || "", applicationId: appId, stage });
         }
     };
 
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleStatusChange = async (appId: any, status: any) => {
-        await updateStatus({ applicationId: appId, status });
+    const handleStatusChange = async (appId: Id<"applications">, status: string) => {
+        await updateStatus({ token: user?.token || "", applicationId: appId, status });
     };
 
     const handleCreateReviewer = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
         try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await createReviewer({ adminId: user._id as any, name: revName, email: revEmail, password: revPass });
+            await createReviewer({
+                token: user?.token || "", // Added token (Wait, createReviewer args needs update in users.ts first?)
+                adminId: user._id,
+                name: revName,
+                email: revEmail,
+                password: revPass,
+                assignToCohortId: activeCohort?._id
+            });
             alert("Reviewer created!");
             setRevName(""); setRevEmail(""); setRevPass("");
-        } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-            alert("Error: " + err.message);
+        } catch (err) {
+            alert("Error: " + (err instanceof Error ? err.message : "Unknown error"));
         }
     };
 
+    const handleImportUser = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user) return;
+        try {
+            await onboardUser({
+                token: user.token,
+                adminId: user._id,
+                email: impEmail,
+                name: impName,
+                targetStageId: impStage
+            });
+            alert("User imported successfully!");
+            setImpName(""); setImpEmail(""); setShowImport(false);
+        } catch (e) {
+            alert("Error: " + (e instanceof Error ? e.message : "Unknown error"));
+        }
+    }
+
     return (
         <div>
+            <div className="mb-8">
+                <h2 className="text-2xl font-bold text-gray-800">
+                    {activeCohort ? `Active Cohort: ${activeCohort.name}` : "No Active Cohort"}
+                </h2>
+                <p className="text-gray-500 text-sm">Manage applicants and reviewers for the currently active admission cycle.</p>
+            </div>
+
             <div className="flex gap-4 mb-6 border-b pb-2">
                 <button onClick={() => setActiveTab('applicants')} className={`pb-2 ${activeTab === 'applicants' ? 'font-bold text-brand-blue border-b-2 border-brand-blue' : 'text-gray-500'}`}>Applicants</button>
                 <button onClick={() => setActiveTab('reviewers')} className={`pb-2 ${activeTab === 'reviewers' ? 'font-bold text-brand-blue border-b-2 border-brand-blue' : 'text-gray-500'}`}>Reviewers</button>
-                <button onClick={() => setActiveTab('cohorts')} className={`pb-2 ${activeTab === 'cohorts' ? 'font-bold text-brand-blue border-b-2 border-brand-blue' : 'text-gray-500'}`}>Cohorts</button>
             </div>
 
             {activeTab === 'reviewers' ? (
@@ -133,7 +159,45 @@ export default function AdminDashboard() {
                 </div>
             ) : activeTab === 'applicants' ? (
                 <>
-                    <h3 className="text-xl font-bold mb-4 text-brand-blueDark">Applicant Pipelines</h3>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xl font-bold text-brand-blueDark">Applicant Pipelines</h3>
+                        <button
+                            onClick={() => setShowImport(!showImport)}
+                            className="bg-white border hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition"
+                        >
+                            <UploadCloud size={16} /> Import / Fast Track
+                        </button>
+                    </div>
+
+                    {showImport && (
+                        <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6 animate-fade-in">
+                            <h4 className="font-bold text-brand-blueDark mb-3 flex items-center gap-2">
+                                <Plus size={16} /> Import Applicant / Fast Track
+                            </h4>
+                            <form onSubmit={handleImportUser} className="flex gap-4 items-end flex-wrap">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Name</label>
+                                    <input className="border p-2 rounded text-sm" value={impName} onChange={e => setImpName(e.target.value)} placeholder="Full Name" required />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
+                                    <input className="border p-2 rounded text-sm" value={impEmail} onChange={e => setImpEmail(e.target.value)} type="email" placeholder="user@example.com" required />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Starting Stage</label>
+                                    <select className="border p-2 rounded text-sm min-w-[150px]" value={impStage} onChange={e => setImpStage(e.target.value)}>
+                                        {activeCohort?.pipeline.map(p => (
+                                            <option key={p.id} value={p.id}>{p.name} ({p.type})</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <button className="bg-brand-blue text-white px-4 py-2 rounded font-bold text-sm hover:bg-brand-blueDark transition">Import User</button>
+                            </form>
+                            <p className="text-xs text-blue-600 mt-2">
+                                * Takes an existing or new user and creates an application for the current cohort starting at the selected stage.
+                            </p>
+                        </div>
+                    )}
 
                     <div className="overflow-x-auto bg-white rounded-lg shadow">
                         <table className="w-full text-left border-collapse">
@@ -172,12 +236,9 @@ export default function AdminDashboard() {
                                                     value={app.currentStageId}
                                                     onChange={(e) => handleStageChange(app._id, e.target.value)}
                                                 >
-                                                    <option value="form">Form</option>
-                                                    <option value="skills">Skills</option>
-                                                    <option value="interview">Interview</option>
-                                                    <option value="agreement">Agreement</option>
-                                                    <option value="briefing">Briefing</option>
-                                                    <option value="completed">Completed</option>
+                                                    {activeCohort?.pipeline.map((p) => (
+                                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                                    ))}
                                                 </select>
 
                                                 {app.status === 'pending' && (

@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import type { Id, Doc } from "../../../convex/_generated/dataModel";
+import { getAuthUser } from "../../lib/auth";
 import PipelineEditor from "../../components/admin/PipelineEditor";
-import { Plus, Trash2, Edit2, Play, Pause, Save, X, Layout, Users, Briefcase, ChevronRight, Check } from "lucide-react";
+import StageTypeManager from "../../components/admin/stages/StageTypeManager";
+import { Plus, Trash2, Edit2, Play, Pause, Save, X, Layout, Users, Briefcase, ChevronRight, Settings } from "lucide-react";
 
 interface PositionGroup {
     committee: string;
@@ -10,12 +13,13 @@ interface PositionGroup {
 }
 
 export default function CohortManager() {
+    const user = getAuthUser();
     const cohorts = useQuery(api.cohorts.getAllCohorts);
     const updateCohort = useMutation(api.cohorts.updateCohort);
     const createCohort = useMutation(api.cohorts.createCohort);
 
     // View State
-    const [view, setView] = useState<'list' | 'create'>('list');
+    const [view, setView] = useState<'list' | 'create' | 'types'>('list');
     const [editingId, setEditingId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'basic' | 'positions' | 'pipeline'>('basic');
 
@@ -48,19 +52,19 @@ export default function CohortManager() {
 
     if (!cohorts) return <div className="p-8 flex items-center justify-center text-gray-400">Loading cohorts...</div>;
 
-    const toggleActive = async (id: any, currentState: boolean) => {
-        await updateCohort({ cohortId: id, isActive: !currentState });
+    const toggleActive = async (id: Id<"cohorts">, currentState: boolean) => {
+        await updateCohort({ token: user?.token || "", cohortId: id, isActive: !currentState });
     };
 
-    const startEdit = (cohort: any) => {
+    const startEdit = (cohort: Doc<"cohorts">) => {
         setEditingId(cohort._id);
         setNewName(cohort.name);
         setNewSlug(cohort.slug);
 
         // Handle migration from old flat array to new structure if needed
-        if (cohort.openPositions && cohort.openPositions.length > 0 && typeof cohort.openPositions[0] === 'string') {
+        if (cohort.openPositions && cohort.openPositions.length > 0 && typeof (cohort.openPositions as any)[0] === 'string') {
             // Legacy migration display
-            setNewOpenPositions([{ committee: "General", roles: cohort.openPositions }]);
+            setNewOpenPositions([{ committee: "General", roles: cohort.openPositions as any as string[] }]);
         } else {
             setNewOpenPositions(cohort.openPositions || []);
         }
@@ -79,24 +83,29 @@ export default function CohortManager() {
                 pipeline: newPipeline
             };
 
+
+
             if (editingId) {
                 await updateCohort({
-                    cohortId: editingId as any,
+                    token: user?.token || "",
+                    cohortId: editingId as Id<"cohorts">,
                     ...payload
                 });
                 alert("Cohort Updated!");
             } else {
+                const now = Date.now();
                 await createCohort({
+                    token: user?.token || "",
                     ...payload,
-                    startDate: Date.now(),
+                    startDate: now,
                 });
                 alert("Cohort Created!");
             }
             setView('list');
             setEditingId(null);
             setNewName(""); setNewSlug("");
-        } catch (e: any) {
-            alert("Error: " + e.message);
+        } catch (e) {
+            alert("Error: " + (e instanceof Error ? e.message : "Unknown error"));
         }
     };
 
@@ -128,12 +137,12 @@ export default function CohortManager() {
         setNewOpenPositions(newOpenPositions.filter((_, i) => i !== comIdx));
     };
 
-    const TabButton = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: any }) => (
+    const TabButton = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: React.ElementType }) => (
         <button
             onClick={() => setActiveTab(id)}
             className={`flex items-center gap-2 px-6 py-4 border-b-2 transition font-bold text-sm ${activeTab === id
-                    ? 'border-brand-blue text-brand-blue bg-blue-50/50'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                ? 'border-brand-blue text-brand-blue bg-blue-50/50'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                 }`}
         >
             <Icon size={18} />
@@ -147,23 +156,57 @@ export default function CohortManager() {
                 <h1 className="text-3xl font-bold font-heading text-brand-blueDark flex items-center gap-3">
                     <Users className="w-8 h-8" /> Cohort Management
                 </h1>
-                {view === 'list' && (
+                <div className="flex gap-3">
                     <button
-                        onClick={() => {
-                            setEditingId(null);
-                            setNewName(""); setNewSlug("");
-                            setNewOpenPositions([{ committee: "Marketing", roles: ["Designer"] }]);
-                            setView('create');
-                            setActiveTab('basic');
-                        }}
-                        className="bg-brand-blue text-white px-4 py-2 rounded font-bold hover:bg-brand-blueDark transition flex items-center gap-2"
+                        onClick={() => setView('types')}
+                        className={`px-4 py-2 rounded font-bold transition border flex items-center gap-2 ${view === 'types' ? 'bg-gray-100 text-brand-blue border-brand-blue' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
                     >
-                        <Plus size={18} /> New Cohort
+                        <Settings size={18} /> Configure Stage Types
                     </button>
-                )}
+                    {view === 'list' && (
+                        <button
+                            onClick={() => {
+                                setEditingId(null);
+                                setNewName(""); setNewSlug("");
+                                setNewOpenPositions([{ committee: "Marketing", roles: ["Designer"] }]);
+                                setNewPipeline([
+                                    {
+                                        id: "form",
+                                        name: "Application Form",
+                                        type: "form",
+                                        description: "Initial application questions.",
+                                        formConfig: [
+                                            { id: "q1", label: "Example Question", type: "text", required: true }
+                                        ]
+                                    },
+                                    {
+                                        id: "completed",
+                                        name: "Completed",
+                                        type: "completed",
+                                        description: "End of pipeline."
+                                    }
+                                ]);
+                                setView('create');
+                                setActiveTab('basic');
+                            }}
+                            className="bg-brand-blue text-white px-4 py-2 rounded font-bold hover:bg-brand-blueDark transition flex items-center gap-2"
+                        >
+                            <Plus size={18} /> New Cohort
+                        </button>
+                    )}
+                </div>
             </div>
 
-            {view === 'list' ? (
+            {view === 'types' ? (
+                <div className="animate-fade-in">
+                    <div className="mb-4">
+                        <button onClick={() => setView('list')} className="text-gray-500 hover:text-gray-700 flex items-center gap-1 font-semibold text-sm">
+                            <ChevronRight className="rotate-180" size={16} /> Back to Cohorts
+                        </button>
+                    </div>
+                    <StageTypeManager />
+                </div>
+            ) : view === 'list' ? (
                 <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
                     <table className="w-full text-left">
                         <thead className="bg-gray-50 border-b">
@@ -194,8 +237,8 @@ export default function CohortManager() {
                                                 onClick={() => toggleActive(cohort._id, cohort.isActive)}
                                                 title={cohort.isActive ? "Deactivate" : "Activate"}
                                                 className={`p-2 rounded border transition ${cohort.isActive
-                                                        ? 'border-red-200 text-red-600 hover:bg-red-50'
-                                                        : 'border-green-200 text-green-600 hover:bg-green-50'
+                                                    ? 'border-red-200 text-red-600 hover:bg-red-50'
+                                                    : 'border-green-200 text-green-600 hover:bg-green-50'
                                                     }`}
                                             >
                                                 {cohort.isActive ? <Pause size={16} /> : <Play size={16} />}

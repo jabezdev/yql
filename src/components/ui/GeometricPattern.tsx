@@ -9,8 +9,7 @@ import {
     BlueCutout,
     BlueQuarter,
     WineBox,
-    GreyPill,
-    GeometricShapes
+    GreyPill
 } from './GeometricShapes';
 
 interface GeometricPatternProps {
@@ -215,11 +214,11 @@ export default function GeometricPattern({ variant, className = '', size = 60 }:
 
     if (variant === 'footer-strip') {
         const shapes = [
-            { C: BlueQuarter, d: 'tr' }, { C: YellowBox }, { C: GeometricShapes.GreyPill },
+            { C: BlueQuarter, d: 'tr' }, { C: YellowBox }, { C: GreyPill },
             { C: WineFrame }, { C: BlueStar }, { C: LightBlueDiagonal, d: 'tl' },
             { C: GreyQuarter, d: 'bl' }, { C: BlueCutout, d: 'br' }, { C: YellowQuarter, d: 'tl' },
-            { C: WineBox }, { C: GeometricShapes.BlueQuarter, d: 'br' }, { C: GeometricShapes.YellowQuarter, d: 'bl' },
-            { C: LightBlueDiagonal, d: 'tr' }, { C: GeometricShapes.GreyPill }, { C: BlueStar },
+            { C: WineBox }, { C: BlueQuarter, d: 'br' }, { C: YellowQuarter, d: 'bl' },
+            { C: LightBlueDiagonal, d: 'tr' }, { C: GreyPill }, { C: BlueStar },
             { C: WineFrame }, { C: YellowBox }, { C: BlueCutout, d: 'tl' }
         ];
 

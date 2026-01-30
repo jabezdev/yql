@@ -7,7 +7,22 @@ export default defineSchema({
         password: v.string(),
         name: v.string(),
         role: v.string(), // "admin", "reviewer", "applicant" - keeping as string for flexibility
+        linkedCohortIds: v.optional(v.array(v.id("cohorts"))), // For reviewers/admins to specific cohorts
     }).index("by_email", ["email"]),
+
+    sessions: defineTable({
+        userId: v.id("users"),
+        token: v.string(),
+        expiresAt: v.number(),
+    }).index("by_token", ["token"]),
+
+    stage_types: defineTable({
+        key: v.string(), // e.g. "video-interview"
+        label: v.string(), // e.g. "Video Introduction"
+        description: v.optional(v.string()),
+        icon: v.string(), // Lucide icon name, e.g. "Video"
+        kind: v.string(), // "form" | "static" | "completed" - determines rendering behavior
+    }).index("by_key", ["key"]),
 
     cohorts: defineTable({
         name: v.string(), // e.g., "Batch 2026"

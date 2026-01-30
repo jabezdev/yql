@@ -1,19 +1,51 @@
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { getAuthUser } from "../../lib/auth";
 import DynamicPipelineRenderer from "../../components/dynamic/DynamicPipelineRenderer";
+import { Rocket } from "lucide-react";
 
 export default function ApplicantDashboard() {
     const user = getAuthUser();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const application = useQuery(api.applications.getApplication, { userId: user?._id as any });
+    const application = useQuery(api.applications.getApplication, user ? { token: user.token, userId: user._id } : "skip");
     const cohort = useQuery(api.cohorts.getActiveCohort);
+    const recommit = useMutation(api.users.recommitToActiveCohort);
 
-    if (!application || !cohort) return <div>Loading application status...</div>;
+    const handleRecommit = async () => {
+        try {
+            await recommit({ token: user?.token || "" });
+            window.location.reload();
+        } catch (e) {
+            alert("Error: " + (e instanceof Error ? e.message : "Unknown error"));
+        }
+    }
+
+    if (!cohort) return <div className="p-8 text-center">No active cohort currently accepting applications. Check back later!</div>;
+
+    if (!application) {
+        return (
+            <div className="p-8 max-w-2xl mx-auto bg-white rounded-xl shadow border border-brand-blue/20 text-center space-y-4">
+                <div className="w-16 h-16 bg-blue-100 text-brand-blue rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Rocket size={32} />
+                </div>
+                <h2 className="text-3xl font-bold text-brand-blueDark">{cohort.name} is now open!</h2>
+                <p className="text-gray-600 text-lg">
+                    You can now apply or recommit to the newest cohort.
+                    {user?.role === 'applicant' ? " Since you have an account, you can fast-track your application." : ""}
+                </p>
+                <button
+                    onClick={handleRecommit}
+                    className="bg-brand-blue text-white text-lg font-bold px-8 py-4 rounded-full shadow-lg hover:bg-brand-blueDark hover:scale-105 transition transform"
+                >
+                    Apply for {cohort.name}
+                </button>
+                <p className="text-xs text-gray-400 mt-4">By clicking apply, you will start the application process.</p>
+            </div>
+        );
+    }
 
     // Calculate active step index from dynamic pipeline
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const currentStepIndex = cohort.pipeline.findIndex((p: any) => p.id === application.currentStageId);
+    interface PipelineStage { id: string; name: string; }
+    const currentStepIndex = cohort.pipeline.findIndex((p: PipelineStage) => p.id === application.currentStageId);
     // If not found (e.g. completed), handling might differ, but assuming valid ids
     const activeStep = currentStepIndex !== -1 ? currentStepIndex : 0;
     const totalSteps = cohort.pipeline.length;
@@ -30,8 +62,7 @@ export default function ApplicantDashboard() {
                         style={{ width: `${(activeStep / (totalSteps - 1)) * 100}%` }}
                     ></div>
 
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    {cohort.pipeline.map((step: any, idx: number) => (
+                    {cohort.pipeline.map((step: PipelineStage, idx: number) => (
                         <div key={step.id} className={`flex flex-col items-center gap-2 bg-gray-50 px-2`}>
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${idx <= activeStep ? 'bg-brand-orange text-white' : 'bg-gray-300 text-gray-600'
                                 }`}>

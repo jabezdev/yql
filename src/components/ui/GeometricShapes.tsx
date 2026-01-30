@@ -1,25 +1,7 @@
 import React from 'react';
+import { BrandColors, type ShapeProps, type QuarterCircleProps } from './shape-utils';
 
-interface ShapeProps {
-    size?: number | string;
-    className?: string;
-}
-
-interface QuarterCircleProps extends ShapeProps {
-    /** Direction the quarter circle faces: 'tl' | 'tr' | 'bl' | 'br' */
-    direction?: 'tl' | 'tr' | 'bl' | 'br';
-}
-
-// Brand colors
-const COLORS = {
-    lightBlue: '#3986c0',
-    darkBlue: '#396798',
-    blue: '#3d8ccb',
-    blueDark: '#396799',
-    yellow: '#fed432',
-    wine: '#bc594f',
-    gray: '#97abc4',
-};
+const COLORS = BrandColors;
 
 /**
  * Blue Star: Light blue square with a 4-point star on darker blue
@@ -274,21 +256,4 @@ export const BlueQuarter: React.FC<QuarterCircleProps> = ({
     );
 };
 
-// Export colors for use elsewhere
-export const BrandColors = COLORS;
 
-// Export all shapes
-export const GeometricShapes = {
-    BlueStar,
-    YellowBox,
-    YellowQuarter,
-    WineBox,
-    WineFrame,
-    LightBlueDiagonal,
-    GreyPill,
-    GreyQuarter,
-    BlueCutout,
-    BlueQuarter,
-};
-
-export default GeometricShapes;

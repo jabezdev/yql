@@ -9,9 +9,12 @@
  */
 
 import type * as applications from "../applications.js";
+import type * as auth from "../auth.js";
 import type * as cohorts from "../cohorts.js";
+import type * as migrations from "../migrations.js";
 import type * as reviews from "../reviews.js";
 import type * as seed from "../seed.js";
+import type * as stageTypes from "../stageTypes.js";
 import type * as users from "../users.js";
 
 import type {
@@ -22,9 +25,12 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   applications: typeof applications;
+  auth: typeof auth;
   cohorts: typeof cohorts;
+  migrations: typeof migrations;
   reviews: typeof reviews;
   seed: typeof seed;
+  stageTypes: typeof stageTypes;
   users: typeof users;
 }>;
 

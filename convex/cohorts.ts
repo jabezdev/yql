@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
+import { ensureAdmin } from "./auth";
 
 export const getActiveCohort = query({
     args: {},
@@ -20,6 +21,7 @@ export const getAllCohorts = query({
 
 export const createCohort = mutation({
     args: {
+        token: v.string(),
         name: v.string(),
         slug: v.string(),
         startDate: v.number(),
@@ -49,6 +51,7 @@ export const createCohort = mutation({
         }))
     },
     handler: async (ctx, args) => {
+        await ensureAdmin(ctx, args.token);
         // Enforce uniqueness of slug
         const existing = await ctx.db.query("cohorts").withIndex("by_slug", q => q.eq("slug", args.slug)).first();
         if (existing) throw new Error("Cohort slug already exists.");
@@ -63,6 +66,7 @@ export const createCohort = mutation({
 
 export const updateCohort = mutation({
     args: {
+        token: v.string(),
         cohortId: v.id("cohorts"),
         isActive: v.optional(v.boolean()),
         // Full update fields
@@ -95,7 +99,8 @@ export const updateCohort = mutation({
         })))
     },
     handler: async (ctx, args) => {
-        const { cohortId, ...updates } = args;
+        await ensureAdmin(ctx, args.token);
+        const { cohortId, token, ...updates } = args;
 
         if (args.isActive) {
             // Deactivate others? Or allow multiple active?

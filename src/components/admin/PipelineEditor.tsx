@@ -1,12 +1,19 @@
 import { useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 import FormConfigEditor from "./FormConfigEditor";
 import { type FormField } from "../../components/dynamic/DynamicForm";
-import { GripVertical, ChevronDown, ChevronUp, Trash2, Edit2, CheckCircle2, FileText, Mic, PenTool, LayoutTemplate, Plus } from "lucide-react";
+import { GripVertical, ChevronDown, ChevronUp, Trash2, Edit2 } from "lucide-react";
+import * as Icons from "lucide-react";
+import { STAGE_TYPES as FALLBACK_TYPES } from "../../constants/pipeline";
 
 interface PipelineStage {
     id: string;
     name: string;
     type: string;
+    // Store metadata for rendering without lookup
+    kind?: string;
+    icon?: string;
     description?: string;
     formConfig?: FormField[];
     assignees?: string[];
@@ -19,12 +26,28 @@ interface PipelineEditorProps {
 
 export default function PipelineEditor({ pipeline, onChange }: PipelineEditorProps) {
     const [expandedStageId, setExpandedStageId] = useState<string | null>(null);
+    const dbTypes = useQuery(api.stageTypes.getAll);
+
+    // Merge DB types with fallbacks if DB is empty or loading (though loading returns undefined)
+    const availableTypes = dbTypes || [];
+    // If DB is empty, maybe use fallbacks? Or maybe seedDefaults takes care of it.
+    // Let's assume seedDefaults runs. But for safety, if availableTypes is empty, use fallbacks mapped.
+    const effectiveTypes = availableTypes.length > 0 ? availableTypes : FALLBACK_TYPES.map(t => ({
+        key: t.value,
+        label: t.label,
+        kind: t.value === 'form' ? 'form' : t.value === 'completed' ? 'completed' : 'static',
+        icon: t.value === 'form' ? 'FileText' : t.value === 'interview' ? 'Mic' : 'LayoutTemplate',
+        description: ''
+    }));
 
     const addStage = () => {
+        const defaultType = effectiveTypes[0] || { key: 'static', kind: 'static', icon: 'LayoutTemplate' };
         const newStage: PipelineStage = {
             id: `stage_${Date.now()}`,
             name: "New Stage",
-            type: "static",
+            type: defaultType.key,
+            kind: defaultType.kind,
+            icon: defaultType.icon,
             description: "",
             formConfig: []
         };
@@ -35,6 +58,18 @@ export default function PipelineEditor({ pipeline, onChange }: PipelineEditorPro
     const updateStage = (index: number, updates: Partial<PipelineStage>) => {
         const newPipeline = [...pipeline];
         newPipeline[index] = { ...newPipeline[index], ...updates };
+
+        // If type changed, update metadata
+        if (updates.type) {
+            const typeDef = effectiveTypes.find(t => t.key === updates.type);
+            if (typeDef) {
+                newPipeline[index].kind = typeDef.kind;
+                newPipeline[index].icon = typeDef.icon;
+                if (!newPipeline[index].description && typeDef.description) {
+                    newPipeline[index].description = typeDef.description;
+                }
+            }
+        }
         onChange(newPipeline);
     };
 
@@ -56,14 +91,10 @@ export default function PipelineEditor({ pipeline, onChange }: PipelineEditorPro
         onChange(newPipeline);
     };
 
-    const getIconForType = (type: string) => {
-        switch (type) {
-            case 'form': return <FileText size={16} className="text-blue-500" />
-            case 'interview': return <Mic size={16} className="text-purple-500" />
-            case 'agreement': return <PenTool size={16} className="text-orange-500" />
-            case 'completed': return <CheckCircle2 size={16} className="text-green-500" />
-            default: return <LayoutTemplate size={16} className="text-gray-500" />
-        }
+    const getIcon = (iconName?: string) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const Icon = (Icons as any)[iconName || 'LayoutTemplate'] || Icons.LayoutTemplate;
+        return <Icon size={16} className="text-gray-500" />;
     }
 
     return (
@@ -76,7 +107,7 @@ export default function PipelineEditor({ pipeline, onChange }: PipelineEditorPro
                         <div className="font-bold text-gray-400 w-6 text-sm">{idx + 1}.</div>
                         <div className="flex-1">
                             <div className="font-bold text-gray-800 flex items-center gap-2">
-                                {getIconForType(stage.type)}
+                                {getIcon(stage.icon)}
                                 {stage.name}
                             </div>
                         </div>
@@ -105,6 +136,7 @@ export default function PipelineEditor({ pipeline, onChange }: PipelineEditorPro
                                         className="w-full border p-2 rounded focus:ring-2 focus:ring-brand-blue/20 outline-none"
                                         value={stage.name}
                                         onChange={(e) => updateStage(idx, { name: e.target.value })}
+                                        placeholder="e.g. Initial Interview"
                                     />
                                 </div>
                                 <div>
@@ -114,12 +146,13 @@ export default function PipelineEditor({ pipeline, onChange }: PipelineEditorPro
                                         value={stage.type}
                                         onChange={(e) => updateStage(idx, { type: e.target.value })}
                                     >
-                                        <option value="static">Static Info (Text Only)</option>
-                                        <option value="form">Form (Questions)</option>
-                                        <option value="interview">Interview</option>
-                                        <option value="agreement">Agreement / Sign</option>
-                                        <option value="completed">Completion Screen</option>
+                                        {effectiveTypes.map(t => (
+                                            <option key={t.key} value={t.key}>{t.label}</option>
+                                        ))}
                                     </select>
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        Kind: <span className="font-mono">{stage.kind || 'static'}</span>
+                                    </p>
                                 </div>
                             </div>
 
@@ -150,11 +183,11 @@ export default function PipelineEditor({ pipeline, onChange }: PipelineEditorPro
                                 />
                             </div>
 
-                            {/* Render Form Editor if Type is Form */}
-                            {stage.type === 'form' && (
+                            {/* Render Form Editor if Type is Form or Kind is Form */}
+                            {(stage.kind === 'form' || stage.type === 'form') && (
                                 <div className="border-t border-gray-200 pt-6">
                                     <div className="flex items-center gap-2 mb-4">
-                                        <div className="p-1 bg-blue-100 rounded text-brand-blue"><FileText size={16} /></div>
+                                        <div className="p-1 bg-blue-100 rounded text-brand-blue"><Icons.FileText size={16} /></div>
                                         <h5 className="font-bold text-gray-800">Form Configuration</h5>
                                     </div>
                                     <FormConfigEditor
@@ -172,7 +205,7 @@ export default function PipelineEditor({ pipeline, onChange }: PipelineEditorPro
                 onClick={addStage}
                 className="w-full py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 hover:border-brand-blue hover:text-brand-blue hover:bg-blue-50 font-bold transition flex items-center justify-center gap-2 group"
             >
-                <div className="bg-gray-200 text-gray-500 rounded-full p-1 group-hover:bg-brand-blue group-hover:text-white transition"><Plus size={20} /></div>
+                <div className="bg-gray-200 text-gray-500 rounded-full p-1 group-hover:bg-brand-blue group-hover:text-white transition"><Icons.Plus size={20} /></div>
                 Add Pipeline Stage
             </button>
         </div>

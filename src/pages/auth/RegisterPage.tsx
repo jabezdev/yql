@@ -3,21 +3,17 @@ import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useNavigate, Link } from "react-router-dom";
 import { setAuthUser } from "../../lib/auth";
+import { Button } from "../../components/ui/Button";
+import { Card } from "../../components/ui/Card";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 export default function RegisterPage() {
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
-
-    // For simplicity, we allow registering as any role, but in production, this should be restricted.
-    // We'll default to 'applicant' but maybe let them choose for testing OR just force applicant.
-    // The user requirement implies specific pipelines so public registration should probably be Applicant only.
-    // However, I need to create an Admin to test.
-    // I'll add a hidden/dev toggle or just hardcode applicant for now and user can manually edit db or I can make a script.
-    // Actually, I'll make a secret code for admin creation or just keep it simple: Public registration = Applicant.
-    // I will seed the admin user separately or just allow it for now.
-    // Let's stick to APPLICANT only for public registration.
+    const [isLoading, setIsLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
 
     const role = "applicant";
 
@@ -27,63 +23,111 @@ export default function RegisterPage() {
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
+        setIsLoading(true);
         try {
-            const userId = await registerApplicant({ email, password, name });
+            const { userId, token } = await registerApplicant({ email, password, name });
             // Auto login after register
-            setAuthUser({ _id: userId, name, email, role });
+            setAuthUser({ _id: userId, name, email, role, token });
             navigate("/applicant");
         } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-            setError(err.message || "Registration failed");
+            console.error(err);
+            setError(err.message || "Registration failed. Please try again.");
+            setIsLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-            <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-                <h2 className="text-2xl font-bold mb-6 text-center text-brand-blueDark">Apply to YQL</h2>
-                {error && <p className="text-red-500 mb-4 text-sm text-center">{error}</p>}
-                <form onSubmit={handleRegister} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium mb-1">Full Name</label>
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+            <Card className="w-full max-w-md p-8 pt-10 relative overflow-visible" variant="bordered">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-orange to-brand-blueDark"></div>
+
+                <div className="text-center mb-8">
+                    <h1 className="text-3xl font-bold text-brand-blueDark mb-2">Join YQL</h1>
+                    <p className="text-gray-500">Start your application journey</p>
+                </div>
+
+                {error && (
+                    <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg mb-6 text-sm flex items-center justify-center">
+                        {error}
+                    </div>
+                )}
+
+                <form onSubmit={handleRegister} className="space-y-5">
+                    <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">Full Name</label>
                         <input
                             type="text"
-                            className="w-full border rounded p-2"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-blueDark/20 focus:border-brand-blueDark transition-colors outline-none"
+                            placeholder="John Doe"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             required
                         />
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium mb-1">Email</label>
+                    <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">Email Address</label>
                         <input
                             type="email"
-                            className="w-full border rounded p-2"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-blueDark/20 focus:border-brand-blueDark transition-colors outline-none"
+                            placeholder="you@example.com"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             required
                         />
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium mb-1">Password</label>
-                        <input
-                            type="password"
-                            className="w-full border rounded p-2"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            required
-                        />
+                    <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">Password</label>
+                        <div className="relative">
+                            <input
+                                type={showPassword ? "text" : "password"}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-blueDark/20 focus:border-brand-blueDark transition-colors outline-none pr-10"
+                                placeholder="Create a strong password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                required
+                            />
+                            <button
+                                type="button"
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                onClick={() => setShowPassword(!showPassword)}
+                            >
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                        </div>
                     </div>
-                    <button type="submit" className="w-full bg-brand-blueDark text-white py-2 rounded font-bold hover:bg-opacity-90 transition">
-                        Start Application
-                    </button>
+
+                    <Button
+                        type="submit"
+                        variant="geometric-primary"
+                        fullWidth
+                        disabled={isLoading}
+                        className="py-3 mt-4"
+                    >
+                        {isLoading ? (
+                            <>
+                                <Loader2 className="animate-spin mr-2" size={20} />
+                                Creating Account...
+                            </>
+                        ) : (
+                            "Register"
+                        )}
+                    </Button>
                 </form>
-                <p className="mt-4 text-center text-sm">
-                    Already have an account? <Link to="/login" className="text-brand-orange hover:underline">Login here</Link>
-                </p>
-                <p className="mt-2 text-center text-sm">
-                    <Link to="/" className="text-gray-500 hover:text-gray-700">Back to Home</Link>
-                </p>
-            </div>
+
+                <div className="mt-8 text-center bg-gray-50 -mx-8 -mb-8 py-6 border-t border-gray-100">
+                    <p className="text-sm text-gray-600">
+                        Already have an account?{" "}
+                        <Link to="/login" className="text-brand-orange font-semibold hover:underline">
+                            Login here
+                        </Link>
+                    </p>
+                    <div className="mt-2">
+                        <Link to="/" className="text-xs text-gray-400 hover:text-gray-600">
+                            &larr; Back to Home
+                        </Link>
+                    </div>
+                </div>
+            </Card>
         </div>
     );
 }

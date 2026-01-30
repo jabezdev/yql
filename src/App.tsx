@@ -5,6 +5,7 @@ import RegisterPage from "./pages/auth/RegisterPage";
 
 import DashboardLayout from "./layouts/DashboardLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import CohortManager from "./pages/admin/CohortManager";
 import ReviewerDashboard from "./pages/reviewer/ReviewerDashboard";
 import ApplicantDashboard from "./pages/applicant/ApplicantDashboard";
 import { getAuthUser } from "./lib/auth";
@@ -35,6 +36,11 @@ function App() {
           <Route path="/admin" element={
             <ProtectedRoute allowedRoles={['admin']}>
               <AdminDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/cohorts" element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <CohortManager />
             </ProtectedRoute>
           } />
           <Route path="/reviewer" element={
