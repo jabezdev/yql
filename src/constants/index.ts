@@ -32,15 +32,15 @@ import type {
 export const NAV_LINKS: NavLink[] = [
     { name: 'About', href: '#about' },
     { name: 'Mission', href: '#mission' },
-    { name: 'Program', href: '#program' },
-    { name: 'Teams', href: '#teams' },
-    { name: 'FAQ', href: '#faq' },
+    { name: 'Program', href: '#how-it-works' },
+    { name: 'Committees', href: '#committees' },
+    { name: 'Apply', href: '#apply' },
 ];
 
 export const FOOTER_QUICK_LINKS: NavLink[] = [
     { name: 'About', href: '#about' },
-    { name: 'Program', href: '#program' },
-    { name: 'Teams', href: '#teams' },
+    { name: 'Program', href: '#how-it-works' },
+    { name: 'Committees', href: '#committees' },
     { name: 'Apply', href: '#apply' },
 ];
 

@@ -3,10 +3,8 @@ import {
     BlueStar,
     YellowBox,
     YellowQuarter,
-    WineFrame,
     LightBlueDiagonal,
     GreyQuarter,
-    BlueCutout,
     BlueQuarter,
 } from '../ui/GeometricShapes';
 
