@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { api } from "./_generated/api";
-import { getViewer, ensureAdmin } from "./auth";
+import { internal } from "./_generated/api";
+import { Doc } from "./_generated/dataModel";
+import { getViewer } from "./auth";
 import { createAuditLog } from "./auditLog";
 
 /**
@@ -89,10 +90,18 @@ export const updateStatus = mutation({
             updatedAt: Date.now(),
         });
 
-        if (process.type === "recruitment" && args.status === 'approved') {
-            await ctx.db.patch(process.userId, {
-                systemRole: "member",
-                clearanceLevel: 2,
+        // Automations Hook: Status Change
+        const processData = await ctx.db.get(args.processId); // Re-fetch or use prev
+        if (processData && processData.programId) {
+            await ctx.scheduler.runAfter(0, internal.automations.evaluate, {
+                trigger: "status_change",
+                programId: processData.programId,
+                processId: processData._id,
+                userId: processData.userId,
+                data: {
+                    status: args.status,
+                    prevStatus: process.status
+                }
             });
         }
 
@@ -134,23 +143,23 @@ export const submitStage = mutation({
 
         // 1. Validate Current Stage & Fetch Pipeline
         let currentStageConfig;
-        let pipeline: any[] = [];
+        let pipeline: Doc<"stages">[] = [];
 
         if (program.stageIds && program.stageIds.length > 0) {
-            pipeline = (await Promise.all(program.stageIds.map((id: any) => ctx.db.get(id)))).filter(Boolean);
+            pipeline = (await Promise.all(program.stageIds.map((id) => ctx.db.get(id)))).filter(Boolean) as Doc<"stages">[];
             currentStageConfig = pipeline.find(p => p._id === process.currentStageId || p.originalStageId === process.currentStageId);
         }
 
         if (!currentStageConfig) throw new Error("Invalid stage configuration");
 
-        const isMatch = args.stageId === currentStageConfig._id || args.stageId === currentStageConfig.id || args.stageId === currentStageConfig.originalStageId;
+        const isMatch = args.stageId === currentStageConfig._id || args.stageId === (currentStageConfig as any).id || args.stageId === currentStageConfig.originalStageId; // eslint-disable-line @typescript-eslint/no-explicit-any
 
         if (!isMatch) {
             throw new Error(`Stage mismatch. You are trying to submit to ${args.stageId} but process is at ${process.currentStageId}`);
         }
 
         // 2. Validate Data
-        const formConfig = currentStageConfig.config?.formConfig || currentStageConfig.formConfig;
+        const formConfig = (currentStageConfig.config as any)?.formConfig || (currentStageConfig as any).formConfig;
         if (formConfig) {
             for (const field of formConfig) {
                 if (field.required && (args.data[field.id] === undefined || args.data[field.id] === "")) {
@@ -169,7 +178,7 @@ export const submitStage = mutation({
         const currentIndex = pipeline.findIndex(p => p._id === currentStageConfig._id);
         const nextStage = pipeline[currentIndex + 1];
 
-        const updates: any = {
+        const updates: Partial<Doc<"processes">> = {
             data: newStageData,
             updatedAt: Date.now(),
         };
@@ -182,20 +191,20 @@ export const submitStage = mutation({
 
         await ctx.db.patch(process._id, updates);
 
-        // --- Trigger Logic ---
-        const values = Object.values(args.data);
-        if (values.includes("accept") || values.includes("decline")) {
-            await ctx.scheduler.runAfter(0, api.emails.sendEmail, {
-                to: user.email,
-                subject: values.includes("accept") ? "Offer Accepted! 🎉" : "Offer Update",
-                template: "decision_acknowledgment",
-                payload: {
-                    name: user.name,
-                    decision: values.includes("accept") ? "ACCEPTED" : "DECLINED",
-                    stage: currentStageConfig.name
-                }
-            });
-        }
+        // Automations Hook: Stage Submission
+        await ctx.scheduler.runAfter(0, internal.automations.evaluate, {
+            trigger: "stage_submission",
+            programId: program._id,
+            processId: process._id,
+            userId: user._id,
+            data: {
+                stageId: args.stageId,
+                stageName: currentStageConfig.name,
+                submission: args.data,
+                decision: Object.values(args.data).includes("accept") ? "accept" :
+                    Object.values(args.data).includes("decline") ? "decline" : undefined
+            }
+        });
 
         // Audit Log (for stage submission/advance)
         await createAuditLog(ctx, {
@@ -204,10 +213,13 @@ export const submitStage = mutation({
             entityType: "processes",
             entityId: process._id,
             changes: {
-                stageId: args.stageId,
-                nextStageId: updates.currentStageId,
+                before: { currentStageId: process.currentStageId },
+                after: { currentStageId: updates.currentStageId }
             },
-            metadata: { stageName: currentStageConfig.name }
+            metadata: {
+                stageName: currentStageConfig.name,
+                submittedStageId: args.stageId
+            }
         });
     }
 });

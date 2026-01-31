@@ -11,6 +11,7 @@
 import type * as accessGate from "../accessGate.js";
 import type * as auditLog from "../auditLog.js";
 import type * as auth from "../auth.js";
+import type * as automations from "../automations.js";
 import type * as blocks from "../blocks.js";
 import type * as dashboards from "../dashboards.js";
 import type * as departments from "../departments.js";
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   accessGate: typeof accessGate;
   auditLog: typeof auditLog;
   auth: typeof auth;
+  automations: typeof automations;
   blocks: typeof blocks;
   dashboards: typeof dashboards;
   departments: typeof departments;

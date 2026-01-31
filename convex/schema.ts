@@ -38,6 +38,8 @@ export default defineSchema({
                 changedBy: v.optional(v.id("users")),
                 reason: v.optional(v.string()),
             }))),
+            // Generic HR Data
+            customFields: v.optional(v.any()), // e.g. { bankName: "...", emergencyContact: "..." }
         })),
 
         // Notification preferences
@@ -194,7 +196,18 @@ export default defineSchema({
             committee: v.string(), // e.g. "Marketing"
             roles: v.array(v.string()) // e.g. ["Graphic Designer", "Video Editor"]
         }))),
+
         stageIds: v.optional(v.array(v.id("stages"))), // Ordered list of stages
+
+        // Process Automations
+        automations: v.optional(v.array(v.object({
+            trigger: v.string(), // "status_change", "stage_submission"
+            conditions: v.optional(v.any()), // e.g. { status: "approved" }
+            actions: v.array(v.object({
+                type: v.string(), // "send_email", "update_role", "update_status"
+                payload: v.any() // { template: "...", role: "member" }
+            }))
+        }))),
 
     }).index("by_slug", ["slug"]).index("by_active", ["isActive"]),
 
