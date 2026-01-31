@@ -4,6 +4,7 @@ import { ensureAdmin } from "./auth";
 
 /**
  * Creates a reusable stage template.
+ * Now supports optional blockIds for granular architecture.
  */
 export const createTemplate = mutation({
     args: {
@@ -11,6 +12,7 @@ export const createTemplate = mutation({
         type: v.string(),
         description: v.optional(v.string()),
         config: v.any(),
+        blockIds: v.optional(v.array(v.id("block_instances"))), // New
         automations: v.optional(v.array(v.object({
             trigger: v.string(),
             action: v.string(),
@@ -19,7 +21,10 @@ export const createTemplate = mutation({
     },
     handler: async (ctx, args) => {
         await ensureAdmin(ctx);
-        return await ctx.db.insert("stage_templates", args);
+        return await ctx.db.insert("stage_templates", {
+            ...args,
+            assignees: [], // Default empty
+        });
     },
 });
 
@@ -49,25 +54,34 @@ export const addStageToCohort = mutation({
         type: v.string(),
         description: v.optional(v.string()),
         config: v.any(),
+        blockIds: v.optional(v.array(v.id("block_instances"))), // New
         automations: v.optional(v.array(v.object({
             trigger: v.string(),
             action: v.string(),
         }))),
         assignees: v.optional(v.array(v.string())),
+        originalStageId: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         await ensureAdmin(ctx);
+
+        let templateConfig = null;
+        if (args.templateId) {
+            templateConfig = await ctx.db.get(args.templateId);
+            if (!templateConfig) throw new Error("Template not found");
+        }
 
         // 1. Create the Stage Instance
         const stageId = await ctx.db.insert("stages", {
             cohortId: args.cohortId,
             name: args.name,
             type: args.type,
-            config: args.config, // Snapshotting the config
-            automations: args.automations,
+            config: templateConfig ? templateConfig.config : args.config, // Snapshot config
+            blockIds: templateConfig ? templateConfig.blockIds : args.blockIds, // Link to blocks (Shared!)
+            automations: args.automations, // TODO: Snapshot these too from template?
             assignees: args.assignees,
             sourceTemplateId: args.templateId,
-            // originalStageId can be generated if needed for migration compatibility, usually UI handles this
+            originalStageId: args.originalStageId,
         });
 
         // 2. Link to Cohort (Append to order)
@@ -110,6 +124,7 @@ export const updateStage = mutation({
         stageId: v.id("stages"),
         name: v.optional(v.string()),
         config: v.optional(v.any()), // Partial updates might be tricky with any, usually replace
+        blockIds: v.optional(v.array(v.id("block_instances"))), // New
         automations: v.optional(v.array(v.object({
             trigger: v.string(),
             action: v.string(),

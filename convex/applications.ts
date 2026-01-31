@@ -1,6 +1,7 @@
 
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { api } from "./_generated/api";
 import { getViewer, ensureAdmin, ensureReviewer } from "./auth";
 
 /**
@@ -153,6 +154,24 @@ export const submitStage = mutation({
         }
 
         await ctx.db.patch(application._id, updates);
+
+        // --- Trigger Logic (Consolidated) ---
+        // Check if this submission involves a Decision Response
+        // Since blockId is unknown, we iterate the data values.
+        // A decision block sends "accept" or "decline".
+        const values = Object.values(args.data);
+        if (values.includes("accept") || values.includes("decline")) {
+            await ctx.scheduler.runAfter(0, api.emails.sendEmail, {
+                to: user.email,
+                subject: values.includes("accept") ? "Offer Accepted! 🎉" : "Offer Update",
+                template: "decision_acknowledgment",
+                payload: {
+                    name: user.name,
+                    decision: values.includes("accept") ? "ACCEPTED" : "DECLINED",
+                    stage: currentStageConfig.name
+                }
+            });
+        }
     }
 });
 

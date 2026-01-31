@@ -13,8 +13,8 @@ export const submitReview = mutation({
         await ctx.db.insert("reviews", {
             applicationId: args.applicationId,
             reviewerId: user._id,
-            score: args.score,
-            notes: args.notes,
+            generalScore: args.score,
+            generalNotes: args.notes,
             createdAt: Date.now(),
         });
     },

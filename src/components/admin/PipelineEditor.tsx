@@ -6,7 +6,9 @@ import * as Icons from "lucide-react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 
-import { STAGE_TYPE_LIST } from "../../constants/stages";
+// import { STAGE_TYPE_LIST } from "../../constants/stages"; // Might remove this if we use full registry
+import { PIPELINE_STAGE_TYPES } from "../../constants/blocks";
+import BlockListEditor, { type BlockInstance } from "./blocks/BlockListEditor";
 
 interface PipelineStage {
     id: string;
@@ -16,7 +18,9 @@ interface PipelineStage {
     kind?: string;
     icon?: any; // changed string to any to support icon component or string from earlier
     description?: string;
-    formConfig?: FormField[];
+    formConfig?: FormField[]; // Legacy form config
+    blockIds?: string[]; // IDs for backend linkage
+    blocks?: BlockInstance[]; // Client-side working copy of blocks
     assignees?: string[];
 }
 
@@ -31,11 +35,11 @@ export default function PipelineEditor({ pipeline, onChange }: PipelineEditorPro
     const saveTemplate = useMutation(api.stages.createTemplate);
     const [showTemplates, setShowTemplates] = useState(false);
 
-    // Use hardcoded constants
-    const effectiveTypes = STAGE_TYPE_LIST;
+    // Use hardcoded constants from new registry
+    const effectiveTypes = PIPELINE_STAGE_TYPES;
 
     const addStage = () => {
-        const defaultType = effectiveTypes[0] || { key: 'static', kind: 'static', icon: Icons.LayoutTemplate };
+        const defaultType = effectiveTypes[0]; // Standard
         // We only store persistable data. Kind/Icon are derived from type.
         const newStage: PipelineStage = {
             id: `stage_${Date.now()}`,
@@ -94,6 +98,11 @@ export default function PipelineEditor({ pipeline, onChange }: PipelineEditorPro
                 }
             }
         }
+
+        // If blocks were updated, we might need to sync blockIds if they are saved?
+        // Actually the `blocks` prop holds the working copy. `blockIds` is for backend.
+        // We rely on the save handler (in parent) to process these "blocks" into "blockIds" (creating if needed).
+
         onChange(newPipeline);
     };
 
@@ -135,7 +144,9 @@ export default function PipelineEditor({ pipeline, onChange }: PipelineEditorPro
             {pipeline.map((stage, idx) => {
                 const typeDef = effectiveTypes.find(t => t.key === stage.type);
                 const derivedIcon = typeDef?.icon || stage.icon;
-                const derivedKind = typeDef?.kind || stage.kind || 'static';
+                // Kind property doesn't exist on PIPELINE_STAGE_TYPES, assuming 'static' default if not found
+                // We'll rely on our registry categorization or just use stage.type directly
+                const derivedKind = stage.kind || (typeDef ? 'default' : 'static');
 
                 return (
                     <div key={stage.id} className={`border rounded-lg bg-white shadow-sm overflow-hidden transition-all ${expandedStageId === stage.id ? 'ring-2 ring-brand-blue ring-offset-1' : ''}`}>
@@ -230,13 +241,28 @@ export default function PipelineEditor({ pipeline, onChange }: PipelineEditorPro
                                     />
                                 </div>
 
-                                {/* Render Form Editor if Type is Form or Kind is Form */}
+                                {/* Handle Block Editor for Standard Pages */}
+                                {stage.type === 'default' && (
+                                    <div className="border-t border-gray-200 pt-6">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <div className="p-1 bg-blue-100 rounded text-brand-blue"><Icons.Layers size={16} /></div>
+                                            <h5 className="font-bold text-gray-800">Page Content Blocks</h5>
+                                        </div>
+                                        <BlockListEditor
+                                            blocks={stage.blocks || []}
+                                            onChange={(newBlocks: BlockInstance[]) => updateStage(idx, { blocks: newBlocks })}
+                                        />
+                                    </div>
+                                )}
+
+                                {/* Legacy Form Fallback or Specific Configs */}
                                 {(derivedKind === 'form' || stage.type === 'form') && (
                                     <div className="border-t border-gray-200 pt-6">
                                         <div className="flex items-center gap-2 mb-4">
-                                            <div className="p-1 bg-blue-100 rounded text-brand-blue"><Icons.FileText size={16} /></div>
-                                            <h5 className="font-bold text-gray-800">Form Configuration</h5>
+                                            <div className="p-1 bg-amber-100 rounded text-amber-700"><Icons.AlertTriangle size={16} /></div>
+                                            <h5 className="font-bold text-gray-800">Legacy Form Config (Deprecated)</h5>
                                         </div>
+                                        <p className="text-xs text-gray-500 mb-4">This stage uses the old monolithic form builder. Consider converting to "Page Content Blocks".</p>
                                         <FormConfigEditor
                                             fields={stage.formConfig || []}
                                             onChange={(newFields) => updateStage(idx, { formConfig: newFields })}

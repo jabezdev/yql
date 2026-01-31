@@ -14,11 +14,19 @@ export default defineSchema({
 
     // stage_types table removed - now hardcoded constants
 
+    block_instances: defineTable({
+        type: v.string(), // "text_display", "input_text", "file_upload", etc.
+        name: v.optional(v.string()), // For admin ID
+        config: v.any(), // JSON content (label, placeholder, etc.)
+        version: v.optional(v.number()),
+    }),
+
     stage_templates: defineTable({
         name: v.string(),
         type: v.string(), // "form", "interview", "video", "static", "completed"
         description: v.optional(v.string()),
-        config: v.any(), // JSON content (formConfig, etc.)
+        config: v.any(), // Legacy config or metadata
+        blockIds: v.optional(v.array(v.id("block_instances"))), // New Block Architecture
         automations: v.optional(v.array(v.object({
             trigger: v.string(),
             action: v.string(),
@@ -31,6 +39,7 @@ export default defineSchema({
         name: v.string(),
         type: v.string(),
         config: v.any(),
+        blockIds: v.optional(v.array(v.id("block_instances"))), // New Block Architecture
         automations: v.optional(v.array(v.object({
             trigger: v.string(),
             action: v.string(),
@@ -100,8 +109,34 @@ export default defineSchema({
     reviews: defineTable({
         applicationId: v.id("applications"),
         reviewerId: v.id("users"),
-        score: v.number(),
-        notes: v.optional(v.string()),
+        stageId: v.optional(v.id("stages")), // Link review to a specific stage
+        generalScore: v.optional(v.number()), // Overall score
+        generalNotes: v.optional(v.string()),
+        blockData: v.optional(v.any()), // JSON: { [blockId]: { score: 10, comment: "Good", availability: [...] } }
         createdAt: v.number(),
-    }).index("by_application", ["applicationId"]),
+    })
+        .index("by_application", ["applicationId"])
+        .index("by_stage_application", ["stageId", "applicationId"]),
+
+    interview_slots: defineTable({
+        schoolId: v.optional(v.id("cohorts")), // Optional link to cohort/school context
+        blockId: v.string(), // Link to the specific block instance (block.id)
+        reviewerId: v.optional(v.id("users")), // Specific host
+        startTime: v.number(),
+        endTime: v.number(),
+        maxAttendees: v.number(), // usually 1
+        attendees: v.array(v.id("users")), // Applicants who booked
+        status: v.string(), // "open", "full", "cancelled"
+    })
+        .index("by_block", ["blockId"])
+        .index("by_start_time", ["startTime"]),
+
+    files: defineTable({
+        storageId: v.string(), // The Convex Storage ID
+        userId: v.id("users"), // Owner
+        name: v.optional(v.string()), // Original filename
+        type: v.optional(v.string()), // MIME type
+        applicationId: v.optional(v.id("applications")), // Link to application context if available
+        createdAt: v.number(),
+    }).index("by_storageId", ["storageId"]).index("by_user", ["userId"]),
 });

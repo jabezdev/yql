@@ -8,14 +8,20 @@
  * @module
  */
 
+import type * as accessGate from "../accessGate.js";
 import type * as applications from "../applications.js";
 import type * as auth from "../auth.js";
+import type * as blocks from "../blocks.js";
 import type * as cohorts from "../cohorts.js";
+import type * as emails from "../emails.js";
+import type * as files from "../files.js";
+import type * as interviews from "../interviews.js";
 import type * as migrations from "../migrations.js";
 import type * as reviews from "../reviews.js";
 import type * as seed from "../seed.js";
 import type * as stages from "../stages.js";
 import type * as users from "../users.js";
+import type * as validators_blocks from "../validators/blocks.js";
 
 import type {
   ApiFromModules,
@@ -24,14 +30,20 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  accessGate: typeof accessGate;
   applications: typeof applications;
   auth: typeof auth;
+  blocks: typeof blocks;
   cohorts: typeof cohorts;
+  emails: typeof emails;
+  files: typeof files;
+  interviews: typeof interviews;
   migrations: typeof migrations;
   reviews: typeof reviews;
   seed: typeof seed;
   stages: typeof stages;
   users: typeof users;
+  "validators/blocks": typeof validators_blocks;
 }>;
 
 /**

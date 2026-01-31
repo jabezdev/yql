@@ -32,7 +32,7 @@ export default function DynamicPipelineRenderer({ application, stages }: Dynamic
         try {
             await submitStage({
                 applicationId: application._id,
-                stageId: currentStageConfig.id,
+                stageId: currentStageConfig._id || currentStageConfig.id,
                 data
             });
             // Result is handled by reactivity (application prop updates)
@@ -49,7 +49,9 @@ export default function DynamicPipelineRenderer({ application, stages }: Dynamic
 
     if (renderType === 'form' && currentStageConfig.formConfig) {
         // Get existing data for this stage
-        const existingData = application.stageData?.[currentStageConfig.id] || {};
+        // Use logic consistent with submission: check new ID first, then legacy/original
+        const stageIdKey = currentStageConfig._id || currentStageConfig.id;
+        const existingData = application.stageData?.[stageIdKey] || application.stageData?.[currentStageConfig.originalStageId] || {};
 
         return (
             <div>
