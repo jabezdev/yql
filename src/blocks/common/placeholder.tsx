@@ -13,7 +13,7 @@ export const ConfigEditor: React.FC<BlockConfigProps> = () => {
 };
 
 // --- Applicant View ---
-export const ApplicantView: React.FC<ApplicantViewProps> = ({ block }) => {
+export const ParticipantView: React.FC<ApplicantViewProps> = ({ block }) => {
     return (
         <div className="p-6 bg-gray-50 border rounded-xl text-center">
             <h4 className="font-bold text-gray-600 mb-1">{block.name || "Coming Soon"}</h4>

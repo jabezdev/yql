@@ -33,7 +33,7 @@ export const ConfigEditor: React.FC<BlockConfigProps> = ({ config, onChange }) =
 // --- Applicant View ---
 const MAX_VIDEO_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB - matches server limit
 
-export const ApplicantView: React.FC<ApplicantViewProps> = ({ block, value, onChange, readOnly }) => {
+export const ParticipantView: React.FC<ApplicantViewProps> = ({ block, value, onChange, readOnly }) => {
     const { config } = block;
     // value = storageId (string)
     const maxDuration = config.maxDuration || 120; // Default 2 minutes

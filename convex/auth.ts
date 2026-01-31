@@ -15,34 +15,40 @@ export async function getViewer(ctx: QueryCtx | MutationCtx) {
 
     if (user) return user;
 
-    // 2. Fallback: Check by email (For invitations/migrations)
-    // Note: Clerk provides verified emails. We trust them.
+    // Check by email (migration/linking)
     if (identity.email) {
         const userByEmail = await ctx.db
             .query("users")
             .withIndex("by_email", (q) => q.eq("email", identity.email!))
             .first();
-
-        // If found, this user was pre-created (e.g. by admin) or from legacy system.
-        // We should ideally return it. The 'store' mutation will link it later.
         return userByEmail;
     }
 
     return null;
 }
 
+/**
+ * Ensures user has Admin access (Tier 4+).
+ */
 export async function ensureAdmin(ctx: QueryCtx | MutationCtx) {
     const user = await getViewer(ctx);
-    if (!user || user.role !== "admin") {
-        throw new Error("Forbidden: Admin access only");
+
+    // New Schema Check
+    if (!user || (user.clearanceLevel ?? 0) < 4) {
+        throw new Error("Forbidden: Admin access only (Tier 4+)");
     }
     return user;
 }
 
+/**
+ * Ensures user has Reviewer/Officer access (Tier 3+).
+ */
 export async function ensureReviewer(ctx: QueryCtx | MutationCtx) {
     const user = await getViewer(ctx);
-    if (!user || (user.role !== "admin" && user.role !== "reviewer")) {
-        throw new Error("Forbidden: Reviewer access only");
+
+    // New Schema Check
+    if (!user || (user.clearanceLevel ?? 0) < 3) {
+        throw new Error("Forbidden: Officer access only (Tier 3+)");
     }
     return user;
 }

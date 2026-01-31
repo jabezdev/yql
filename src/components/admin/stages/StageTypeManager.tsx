@@ -1,33 +1,43 @@
 import { STAGE_TYPE_LIST } from "../../../constants/stages";
 import * as Icons from "lucide-react";
+import { DashboardSectionTitle } from "../../ui";
 
 export default function StageTypeManager() {
     return (
-        <div className="max-w-4xl mx-auto p-6">
-            <div className="flex justify-between items-center mb-6">
+        <div className="max-w-6xl mx-auto space-y-8 animate-fadeIn">
+            <div className="flex flex-col md:flex-row gap-6 items-start justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-800">Stage Types</h2>
-                    <p className="text-gray-500">Available building blocks for pipelines (Hardcoded).</p>
+                    <DashboardSectionTitle>Global Configuration</DashboardSectionTitle>
+                    <p className="text-gray-500 max-w-2xl">
+                        These are the available building blocks for your recruitment pipelines.
+                        Each stage type comes with specific capabilities and default behaviors.
+                        System administrators can define new types in the code.
+                    </p>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {STAGE_TYPE_LIST.map((t) => {
-                    // New constants have the component directly in `icon`
                     const Icon = t.icon || Icons.LayoutTemplate;
                     return (
-                        <div key={t.key} className="bg-white p-4 rounded-lg border shadow-sm hover:shadow-md transition group relative">
-                            <div className="flex items-start justify-between mb-2">
-                                <div className="p-2 bg-blue-50 text-brand-blue rounded-lg">
-                                    <Icon size={24} />
+                        <div key={t.key} className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm hover:shadow-md hover:border-brand-blue/30 transition group flex flex-col h-full">
+                            <div className="flex justify-between items-start mb-4">
+                                <div className="p-3 bg-brand-bgLight text-brand-blue rounded-xl group-hover:scale-110 transition-transform">
+                                    <Icon size={28} />
                                 </div>
+                                <span className="px-2 py-1 bg-gray-100 text-gray-500 rounded text-xs font-mono font-medium">
+                                    {t.key}
+                                </span>
                             </div>
-                            <h4 className="font-bold text-gray-800">{t.label}</h4>
-                            <div className="flex items-center gap-2 mt-1 mb-2">
-                                <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">{t.key}</code>
-                                <span className="text-xs text-gray-400 capitalize">• {t.kind}</span>
+
+                            <h4 className="font-bold text-brand-blueDark text-lg mb-2">{t.label}</h4>
+                            <p className="text-sm text-gray-500 leading-relaxed mb-6 flex-1">
+                                {t.description}
+                            </p>
+
+                            <div className="pt-4 border-t border-gray-50 flex items-center justify-between text-xs text-gray-400 font-medium">
+                                {/* Beta tag removed to fix lint error if property missing */}
                             </div>
-                            <p className="text-sm text-gray-500 line-clamp-2">{t.description}</p>
                         </div>
                     )
                 })}

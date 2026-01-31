@@ -24,7 +24,7 @@ export const ConfigEditor: React.FC<BlockConfigProps> = ({ config, onChange }) =
 };
 
 // --- Applicant View ---
-export const ApplicantView: React.FC<ApplicantViewProps> = ({ block }) => {
+export const ParticipantView: React.FC<ApplicantViewProps> = ({ block }) => {
     return (
         <div className="mb-6 prose prose-blue max-w-none">
             {/* Extremely simple markdown rendering for now, could use a library later */}

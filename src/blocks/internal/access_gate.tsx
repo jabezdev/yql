@@ -26,7 +26,7 @@ export const ConfigEditor: React.FC<BlockConfigProps> = ({ config, onChange }) =
 // --- Applicant View ---
 // Security: Passcode validation happens SERVER-SIDE only
 // The value stored is { unlocked: boolean } - we never store or compare the actual passcode client-side
-export const ApplicantView: React.FC<ApplicantViewProps> = ({ block, value, onChange, readOnly }) => {
+export const ParticipantView: React.FC<ApplicantViewProps> = ({ block, value, onChange, readOnly }) => {
     const [input, setInput] = useState("");
     const [validating, setValidating] = useState(false);
     const [error, setError] = useState<string | null>(null);

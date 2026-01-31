@@ -14,7 +14,7 @@ export const ConfigEditor: React.FC<BlockConfigProps> = () => {
 };
 
 // --- Applicant View ---
-export const ApplicantView: React.FC<ApplicantViewProps> = () => {
+export const ParticipantView: React.FC<ApplicantViewProps> = () => {
     // Hidden from applicant
     return null;
 };

@@ -2,6 +2,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { getViewer, ensureAdmin } from "./auth";
+import { createAuditLog } from "./auditLog";
 
 /**
  * Syncs the Clerk user to the Convex users table.
@@ -41,39 +42,28 @@ export const storeUser = mutation({
             return userByEmail._id;
         }
 
-        // New User -> Create as Applicant
-        const activeCohort = await ctx.db
-            .query("cohorts")
-            .withIndex("by_active", (q) => q.eq("isActive", true))
-            .first();
-
         // Create the user record
         const userId = await ctx.db.insert("users", {
             name: identity.name!,
             email: identity.email!,
             tokenIdentifier: identity.tokenIdentifier,
-            role: "applicant",
+            systemRole: "guest",
+            clearanceLevel: 0,
+            profile: {
+                positions: [],
+                status: "candidate", // generic status
+                joinDate: Date.now(),
+            }
         });
 
-        // If there is an active cohort, start an application
-        if (activeCohort) {
-            let initialStageId = "form";
-
-            if (activeCohort.stageIds && activeCohort.stageIds.length > 0) {
-                // Use first stage ID
-                initialStageId = activeCohort.stageIds[0];
-            } else if (activeCohort.pipeline && activeCohort.pipeline.length > 0) {
-                initialStageId = activeCohort.pipeline[0]?.id || "form";
-            }
-            await ctx.db.insert("applications", {
-                userId,
-                cohortId: activeCohort._id,
-                currentStageId: initialStageId,
-                status: "pending",
-                updatedAt: Date.now(),
-                stageData: {}
-            });
-        }
+        // Audit Log (New User)
+        await createAuditLog(ctx, {
+            userId: userId,
+            action: "user.create",
+            entityType: "users",
+            entityId: userId,
+            metadata: { method: "oauth_signup" }
+        });
 
         return userId;
     },
@@ -83,7 +73,9 @@ export const createReviewer = mutation({
     args: {
         email: v.string(),
         name: v.string(),
-        assignToCohortId: v.optional(v.id("cohorts")),
+        title: v.optional(v.string()),
+        department: v.optional(v.string()),
+        assignToProgramId: v.optional(v.id("programs")),
     },
     handler: async (ctx, args) => {
         await ensureAdmin(ctx);
@@ -100,8 +92,24 @@ export const createReviewer = mutation({
         const userId = await ctx.db.insert("users", {
             email: args.email,
             name: args.name,
-            role: "reviewer",
-            linkedCohortIds: args.assignToCohortId ? [args.assignToCohortId] : [],
+            systemRole: "member", // Default to member with high clearance
+            clearanceLevel: 3,
+            profile: {
+                positions: args.title ? [{ title: args.title, department: args.department, isPrimary: true }] : [],
+                status: "active",
+                joinDate: Date.now(),
+            },
+            linkedCohortIds: args.assignToProgramId ? [args.assignToProgramId] : [],
+        });
+
+        // Audit Log
+        const admin = await ensureAdmin(ctx);
+        await createAuditLog(ctx, {
+            userId: admin._id,
+            action: "user.create",
+            entityType: "users",
+            entityId: userId,
+            metadata: { method: "manual_creation", type: "reviewer" }
         });
 
         return userId;
@@ -109,15 +117,19 @@ export const createReviewer = mutation({
 });
 
 export const getReviewers = query({
-    args: { cohortId: v.optional(v.id("cohorts")) },
+    args: { programId: v.optional(v.id("programs")) },
     handler: async (ctx, args) => {
         await ensureAdmin(ctx);
-        const reviewers = await ctx.db.query("users").filter(q => q.eq(q.field("role"), "reviewer")).collect();
+        // "reviewer" role is gone. Users with clearanceLevel >= 3 are reviewers/officers.
+        const reviewers = await ctx.db.query("users")
+            .withIndex("by_system_role", q => q.eq("systemRole", "member")) // Approximation
+            .filter(q => q.gte(q.field("clearanceLevel"), 3))
+            .collect();
 
-        if (args.cohortId) {
+        if (args.programId) {
             return reviewers.filter(r => {
                 if (!r.linkedCohortIds || r.linkedCohortIds.length === 0) return true;
-                return r.linkedCohortIds.includes(args.cohortId!);
+                return r.linkedCohortIds.includes(args.programId!);
             });
         }
         return reviewers;
@@ -132,7 +144,7 @@ export const getUser = query({
 
         if (requestor._id === args.id) return requestor;
 
-        if (requestor.role === "admin" || requestor.role === "reviewer") {
+        if ((requestor.clearanceLevel ?? 0) >= 3 || requestor.systemRole === "admin") {
             return await ctx.db.get(args.id);
         }
 
@@ -140,7 +152,6 @@ export const getUser = query({
     }
 });
 
-// Used by RoleDispatcher and other components to get current user
 export const getMe = query({
     args: {},
     handler: async (ctx) => {
@@ -156,7 +167,7 @@ export const seedAdmin = mutation({
     handler: async (ctx, args) => {
         const existingAdmin = await ctx.db
             .query("users")
-            .filter((q) => q.eq(q.field("role"), "admin"))
+            .withIndex("by_system_role", (q) => q.eq("systemRole", "admin"))
             .first();
 
         if (existingAdmin) {
@@ -169,23 +180,35 @@ export const seedAdmin = mutation({
         const userId = await ctx.db.insert("users", {
             email: args.email,
             name: args.name,
-            role: "admin",
+            systemRole: "admin",
+            clearanceLevel: 5,
+            profile: {
+                positions: [{ title: "System Administrator", isPrimary: true }],
+                status: "active",
+                joinDate: Date.now(),
+            },
             linkedCohortIds: [],
+        });
+
+        // Audit Log
+        await createAuditLog(ctx, {
+            userId: userId,
+            action: "user.create",
+            entityType: "users",
+            entityId: userId,
+            metadata: { method: "seed_admin" }
         });
 
         return userId;
     },
 });
 
-/**
- * Manually import a user and start them at a specific stage.
- * Useful for fast-tracking or migration.
- */
 export const onboardUser = mutation({
     args: {
         email: v.string(),
         name: v.string(),
-        targetStageId: v.string(),
+        targetStageId: v.id("stages"),
+        programId: v.id("programs")
     },
     handler: async (ctx, args) => {
         await ensureAdmin(ctx);
@@ -199,82 +222,44 @@ export const onboardUser = mutation({
             userId = await ctx.db.insert("users", {
                 email: args.email,
                 name: args.name,
-                role: "applicant",
+                systemRole: "guest",
+                clearanceLevel: 0,
+                profile: { positions: [], status: "candidate", joinDate: Date.now() }
+            });
+
+            // Audit Log
+            await createAuditLog(ctx, {
+                userId: userId, // New user
+                action: "user.create",
+                entityType: "users",
+                entityId: userId,
+                metadata: { method: "onboard_user", adminId: (await getViewer(ctx))?._id }
             });
         }
 
-        const activeCohort = await ctx.db.query("cohorts").withIndex("by_active", q => q.eq("isActive", true)).first();
-        if (!activeCohort) throw new Error("No active cohort found");
+        // Check if process exists
+        const existingProcess = await ctx.db.query("processes")
+            .withIndex("by_user", q => q.eq("userId", userId))
+            .filter(q => q.eq(q.field("programId"), args.programId))
+            .first();
 
-        // Check if application exists
-        const existingApp = await ctx.db.query("applications").withIndex("by_user", q => q.eq("userId", userId)).first();
-        if (existingApp) {
-            // Update existing application
-            await ctx.db.patch(existingApp._id, {
-                cohortId: activeCohort._id,
+        if (existingProcess) {
+            await ctx.db.patch(existingProcess._id, {
                 currentStageId: args.targetStageId,
                 updatedAt: Date.now()
             });
         } else {
-            // Create new application
-            await ctx.db.insert("applications", {
+            await ctx.db.insert("processes", {
                 userId,
-                cohortId: activeCohort._id,
+                programId: args.programId,
+                type: "recruitment", // Default
                 currentStageId: args.targetStageId,
-                status: "pending",
+                status: "in_progress",
                 updatedAt: Date.now(),
-                stageData: {}
+                data: {}
             });
         }
 
         return userId;
-    }
-});
-
-/**
- * Recommits a user to the active cohort.
- * If they have an old application, it might be archived or ignored, creating a new one or updating.
- * Simplified here to just update/ensure application for active cohort.
- */
-export const recommitToActiveCohort = mutation({
-    args: {},
-    handler: async (ctx) => {
-        const user = await getViewer(ctx);
-        if (!user) throw new Error("Unauthorized");
-
-        const activeCohort = await ctx.db.query("cohorts").withIndex("by_active", q => q.eq("isActive", true)).first();
-        if (!activeCohort) throw new Error("No active cohort");
-
-        const existingApp = await ctx.db.query("applications").withIndex("by_user", q => q.eq("userId", user._id)).first();
-
-        let initialStageId = "form";
-        if (activeCohort.stageIds && activeCohort.stageIds.length > 0) {
-            initialStageId = activeCohort.stageIds[0];
-        } else if (activeCohort.pipeline && activeCohort.pipeline.length > 0) {
-            initialStageId = activeCohort.pipeline[0]?.id || "form";
-        }
-
-        if (existingApp) {
-            // If existing app is for same cohort, do nothing? Or reset?
-            // If different cohort, maybe update it? Or creates new logic (schema only supports one app per user currently due to by_user index unique? No, index isn't unique, but logic implies one.)
-            // Let's assume one active application.
-            if (existingApp.cohortId !== activeCohort._id) {
-                await ctx.db.patch(existingApp._id, {
-                    cohortId: activeCohort._id,
-                    currentStageId: initialStageId,
-                    status: "pending",
-                    updatedAt: Date.now()
-                });
-            }
-        } else {
-            await ctx.db.insert("applications", {
-                userId: user._id,
-                cohortId: activeCohort._id,
-                currentStageId: initialStageId,
-                status: "pending",
-                updatedAt: Date.now(),
-                stageData: {}
-            });
-        }
     }
 });

@@ -72,8 +72,8 @@ export default function BlockRenderer({ stageId, initialData, onChange, readOnly
                     );
                 }
 
-                const ApplicantComponent = def.ApplicantView;
-                if (!ApplicantComponent) return null; // Internal block with no applicant view
+                const ParticipantComponent = def.ParticipantView;
+                if (!ParticipantComponent) return null; // Internal block with no participant view
 
                 return (
                     <ErrorBoundary
@@ -81,7 +81,7 @@ export default function BlockRenderer({ stageId, initialData, onChange, readOnly
                         fallback={<BlockErrorFallback blockType={block.type} blockId={block._id} />}
                     >
                         <div id={`block-${block._id}`} className="scroll-mt-24">
-                            <ApplicantComponent
+                            <ParticipantComponent
                                 block={block}
                                 value={answers[block._id]}
                                 onChange={(val: unknown) => handleBlockChange(block._id, val)}

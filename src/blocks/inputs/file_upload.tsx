@@ -47,7 +47,7 @@ export const ConfigEditor: React.FC<BlockConfigProps> = ({ config, onChange }) =
 // --- Applicant View ---
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB - matches server limit
 
-export const ApplicantView: React.FC<ApplicantViewProps> = ({ block, value, onChange, readOnly }) => {
+export const ParticipantView: React.FC<ApplicantViewProps> = ({ block, value, onChange, readOnly }) => {
     const { config } = block;
     // value = storageId (string)
 

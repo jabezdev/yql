@@ -93,7 +93,7 @@ export const saveFile = mutation({
         storageId: v.string(),
         name: v.optional(v.string()),
         type: v.optional(v.string()),
-        applicationId: v.optional(v.id("applications")),
+        processId: v.optional(v.id("processes")),
     },
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
@@ -111,7 +111,7 @@ export const saveFile = mutation({
             userId: user._id,
             name: args.name,
             type: args.type,
-            applicationId: args.applicationId,
+            processId: args.processId,
             createdAt: Date.now(),
         });
     },
@@ -138,7 +138,7 @@ export const getFileUrl = query({
 
         // 2. Security Check
         const isOwner = file && file.userId === user._id;
-        const isAdminOrReviewer = user.role === "admin" || user.role === "reviewer";
+        const isAdminOrReviewer = (user.clearanceLevel ?? 0) >= 3;
 
         // If file metadata is missing (legacy uploads?), fallback to strict admin check or just allow if we want to be loose for legacy.
         // For new system: strict.
@@ -179,7 +179,7 @@ export const getFileMetadata = query({
         if (!file) return null;
 
         const isOwner = file.userId === user._id;
-        const isAdminOrReviewer = user.role === "admin" || user.role === "reviewer";
+        const isAdminOrReviewer = (user.clearanceLevel ?? 0) >= 3;
 
         if (!isOwner && !isAdminOrReviewer) return null;
 

@@ -10,3 +10,7 @@ export * as GeometricShapes from './GeometricShapes';
 export { BrandColors } from './shape-utils';
 export { GeometricBorder } from './GeometricBorder';
 export { default as GeometricPattern } from './GeometricPattern';
+
+// Dashboard components
+export { DashboardCard, StatCard, DashboardSectionTitle } from './DashboardCard';
+export { PageHeader, DashboardPage, StatusBadge, EmptyState } from './PageHeader';

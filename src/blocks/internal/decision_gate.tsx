@@ -23,7 +23,7 @@ export const ConfigEditor: React.FC<BlockConfigProps> = ({ config, onChange }) =
 };
 
 // --- Applicant View ---
-export const ApplicantView: React.FC<ApplicantViewProps> = () => {
+export const ParticipantView: React.FC<ApplicantViewProps> = () => {
     return null;
 };
 

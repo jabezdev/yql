@@ -4,7 +4,6 @@ import { ensureAdmin } from "./auth";
 
 /**
  * Creates a reusable stage template.
- * Now supports optional blockIds for granular architecture.
  */
 export const createTemplate = mutation({
     args: {
@@ -12,7 +11,7 @@ export const createTemplate = mutation({
         type: v.string(),
         description: v.optional(v.string()),
         config: v.any(),
-        blockIds: v.optional(v.array(v.id("block_instances"))), // New
+        blockIds: v.optional(v.array(v.id("block_instances"))),
         automations: v.optional(v.array(v.object({
             trigger: v.string(),
             action: v.string(),
@@ -34,27 +33,23 @@ export const createTemplate = mutation({
 export const listTemplates = query({
     args: {},
     handler: async (ctx) => {
-        // Admin only for now? Or reviewers too?
-        // await ensureAdmin(ctx); 
         return await ctx.db.query("stage_templates").collect();
     },
 });
 
 /**
- * Adds a stage to a cohort.
- * Can be based on a template or created from scratch.
- * "Copy on Write" logic: We create a new stage record.
+ * Adds a stage to a program.
  */
-export const addStageToCohort = mutation({
+export const addStageToProgram = mutation({
     args: {
-        cohortId: v.id("cohorts"),
+        programId: v.id("programs"),
         templateId: v.optional(v.id("stage_templates")),
         // Overrides or raw config if no template
         name: v.string(),
         type: v.string(),
         description: v.optional(v.string()),
         config: v.any(),
-        blockIds: v.optional(v.array(v.id("block_instances"))), // New
+        blockIds: v.optional(v.array(v.id("block_instances"))),
         automations: v.optional(v.array(v.object({
             trigger: v.string(),
             action: v.string(),
@@ -71,25 +66,47 @@ export const addStageToCohort = mutation({
             if (!templateConfig) throw new Error("Template not found");
         }
 
-        // 1. Create the Stage Instance
+        // 1. Prepare Block IDs (Deep Copy Strategy)
+        const finalBlockIds: string[] = [];
+
+        if (templateConfig && templateConfig.blockIds) {
+            for (const blockId of templateConfig.blockIds) {
+                const originalBlock = await ctx.db.get(blockId);
+                if (originalBlock) {
+                    const newBlockId = await ctx.db.insert("block_instances", {
+                        type: originalBlock.type,
+                        name: originalBlock.name,
+                        config: originalBlock.config,
+                        version: 1,
+                        parentId: originalBlock._id,
+                    });
+                    finalBlockIds.push(newBlockId);
+                }
+            }
+        }
+        else if (args.blockIds) {
+            finalBlockIds.push(...args.blockIds);
+        }
+
+        // 2. Create the Stage Instance
         const stageId = await ctx.db.insert("stages", {
-            cohortId: args.cohortId,
+            programId: args.programId,
             name: args.name,
             type: args.type,
-            config: templateConfig ? templateConfig.config : args.config, // Snapshot config
-            blockIds: templateConfig ? templateConfig.blockIds : args.blockIds, // Link to blocks (Shared!)
-            automations: args.automations, // TODO: Snapshot these too from template?
+            config: templateConfig ? templateConfig.config : args.config,
+            blockIds: finalBlockIds as any,
+            automations: args.automations,
             assignees: args.assignees,
             sourceTemplateId: args.templateId,
             originalStageId: args.originalStageId,
         });
 
-        // 2. Link to Cohort (Append to order)
-        const cohort = await ctx.db.get(args.cohortId);
-        if (!cohort) throw new Error("Cohort not found");
+        // 3. Link to Program (Append to order)
+        const program = await ctx.db.get(args.programId);
+        if (!program) throw new Error("Program not found");
 
-        const currentStageIds = cohort.stageIds || [];
-        await ctx.db.patch(args.cohortId, {
+        const currentStageIds = program.stageIds || [];
+        await ctx.db.patch(args.programId, {
             stageIds: [...currentStageIds, stageId],
         });
 
@@ -98,18 +115,17 @@ export const addStageToCohort = mutation({
 });
 
 /**
- * Reorders stages in a cohort.
+ * Reorders stages in a program.
  */
 export const reorderStages = mutation({
     args: {
-        cohortId: v.id("cohorts"),
+        programId: v.id("programs"),
         stageIds: v.array(v.id("stages")),
     },
     handler: async (ctx, args) => {
         await ensureAdmin(ctx);
 
-        // Verify ownership/integrity if needed
-        await ctx.db.patch(args.cohortId, {
+        await ctx.db.patch(args.programId, {
             stageIds: args.stageIds,
         });
     },
@@ -117,14 +133,14 @@ export const reorderStages = mutation({
 
 /**
  * Updates a specific stage instance.
- * Does NOT affect the template it came from.
  */
 export const updateStage = mutation({
     args: {
         stageId: v.id("stages"),
         name: v.optional(v.string()),
-        config: v.optional(v.any()), // Partial updates might be tricky with any, usually replace
-        blockIds: v.optional(v.array(v.id("block_instances"))), // New
+        description: v.optional(v.string()),
+        config: v.optional(v.any()),
+        blockIds: v.optional(v.array(v.id("block_instances"))),
         automations: v.optional(v.array(v.object({
             trigger: v.string(),
             action: v.string(),
@@ -139,8 +155,8 @@ export const updateStage = mutation({
 });
 
 /**
- * Removes a stage from a cohort.
- * Also removes it from the cohort's ordered list.
+ * Removes a stage from a program.
+ * Also removes it from the program's ordered list.
  */
 export const deleteStage = mutation({
     args: {
@@ -152,11 +168,11 @@ export const deleteStage = mutation({
         const stage = await ctx.db.get(args.stageId);
         if (!stage) return;
 
-        // Remove from cohort list
-        const cohort = await ctx.db.get(stage.cohortId);
-        if (cohort && cohort.stageIds) {
-            await ctx.db.patch(stage.cohortId, {
-                stageIds: cohort.stageIds.filter(id => id !== args.stageId)
+        // Remove from program list
+        const program = await ctx.db.get(stage.programId);
+        if (program && program.stageIds) {
+            await ctx.db.patch(stage.programId, {
+                stageIds: program.stageIds.filter(id => id !== args.stageId)
             });
         }
 
@@ -166,23 +182,19 @@ export const deleteStage = mutation({
 });
 
 /**
- * Fetches stages for a cohort in the correct order.
+ * Fetches stages for a program in the correct order.
  */
-export const getCohortStages = query({
-    args: { cohortId: v.id("cohorts") },
+export const getProgramStages = query({
+    args: { programId: v.id("programs") },
     handler: async (ctx, args) => {
-        const cohort = await ctx.db.get(args.cohortId);
-        if (!cohort) return null;
+        const program = await ctx.db.get(args.programId);
+        if (!program) return null;
 
-        if (!cohort.stageIds || cohort.stageIds.length === 0) {
+        if (!program.stageIds || program.stageIds.length === 0) {
             return [];
         }
 
-        // Fetch all stages (could use Promise.all or similar)
-        // Convex `getAll` is efficient
-        // Note: stageIds might contain IDs that were deleted if we aren't careful, 
-        // filter nulls.
-        const stages = await Promise.all(cohort.stageIds.map(id => ctx.db.get(id)));
+        const stages = await Promise.all(program.stageIds.map(id => ctx.db.get(id)));
         return stages.filter(s => s !== null);
     },
 });

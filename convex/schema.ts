@@ -5,12 +5,143 @@ export default defineSchema({
     users: defineTable({
         email: v.string(),
         name: v.string(),
-        role: v.union(v.literal("admin"), v.literal("reviewer"), v.literal("applicant")),
+
+        // System Access (Gatekeeper)
+        // Links to 'roles' table via slug
+        systemRole: v.optional(v.string()),
+
+        // Hierarchy & Permissions
+        // 0=Guest, 1=Probation, 2=Member, 3=Officer, 4=Exec, 5=SystemOwner
+        clearanceLevel: v.optional(v.number()),
+
         tokenIdentifier: v.optional(v.string()),
-        linkedCohortIds: v.optional(v.array(v.id("cohorts"))),
+
+        // The "Flexible" Profile
+        profile: v.optional(v.object({
+            // Flexible array for multiple hats
+            positions: v.array(v.object({
+                title: v.optional(v.string()),
+                departmentId: v.optional(v.id("departments")), // Now references real department
+                department: v.optional(v.string()), // Legacy fallback
+                isPrimary: v.boolean(),
+                startDate: v.optional(v.number()),
+                endDate: v.optional(v.number()),
+            })),
+            status: v.string(), // "candidate", "active", "on_leave", "alumni", "probation"
+            joinDate: v.optional(v.number()),
+            exitDate: v.optional(v.number()),
+            exitReason: v.optional(v.string()),
+            // Status change history
+            statusHistory: v.optional(v.array(v.object({
+                status: v.string(),
+                changedAt: v.number(),
+                changedBy: v.optional(v.id("users")),
+                reason: v.optional(v.string()),
+            }))),
+        })),
+
+        // Notification preferences
+        notificationPreferences: v.optional(v.object({
+            email: v.object({
+                enabled: v.boolean(),
+                frequency: v.string(), // "instant", "daily", "weekly"
+            }),
+            inApp: v.boolean(),
+        })),
+
+        // Legacy (to be removed after migration)
+        linkedCohortIds: v.optional(v.array(v.id("programs"))),
     })
         .index("by_email", ["email"])
-        .index("by_tokenIdentifier", ["tokenIdentifier"]),
+        .index("by_tokenIdentifier", ["tokenIdentifier"])
+        .index("by_system_role", ["systemRole"]),
+
+    // ============================================
+    // ORGANIZATION STRUCTURE
+    // ============================================
+
+    departments: defineTable({
+        name: v.string(),
+        slug: v.string(),
+        description: v.optional(v.string()),
+        headId: v.optional(v.id("users")), // Department head
+        parentDepartmentId: v.optional(v.id("departments")), // For nested structures
+        isActive: v.boolean(),
+        order: v.optional(v.number()), // Display ordering
+    })
+        .index("by_slug", ["slug"])
+        .index("by_parent", ["parentDepartmentId"])
+        .index("by_active", ["isActive"]),
+
+    // ============================================
+    // AUDIT & LOGGING
+    // ============================================
+
+    audit_logs: defineTable({
+        userId: v.id("users"), // Who performed the action
+        action: v.string(), // "user.status_change", "process.advance", "role.update"
+        entityType: v.string(), // "users", "processes", "stages", "departments"
+        entityId: v.string(), // The modified record ID
+        changes: v.optional(v.any()), // { before: {...}, after: {...} }
+        metadata: v.optional(v.any()), // Additional context
+        createdAt: v.number(),
+    })
+        .index("by_entity", ["entityType", "entityId"])
+        .index("by_user", ["userId"])
+        .index("by_action", ["action"])
+        .index("by_created", ["createdAt"]),
+
+    // ============================================
+    // NOTIFICATIONS
+    // ============================================
+
+    notifications: defineTable({
+        userId: v.id("users"),
+        type: v.string(), // "process_update", "event_reminder", "system_alert", "status_change"
+        title: v.string(),
+        message: v.string(),
+        link: v.optional(v.string()), // Deep link to relevant page
+        relatedEntityType: v.optional(v.string()), // "processes", "events"
+        relatedEntityId: v.optional(v.string()),
+        isRead: v.boolean(),
+        createdAt: v.number(),
+    })
+        .index("by_user", ["userId"])
+        .index("by_unread", ["userId", "isRead"])
+        .index("by_type", ["type"]),
+
+    // ============================================
+    // ROLES & PERMISSIONS
+    // ============================================
+
+    roles: defineTable({
+        slug: v.string(), // e.g. "guest", "member"
+        name: v.string(), // Display name
+        description: v.optional(v.string()),
+        // Legacy UI permissions (kept for compatibility)
+        uiPermissions: v.array(v.string()),
+        // Granular permissions
+        permissions: v.optional(v.array(v.object({
+            resource: v.string(), // "users", "processes", "programs", "departments"
+            actions: v.array(v.string()), // ["read", "create", "update", "delete"]
+            scope: v.optional(v.string()), // "own", "department", "all"
+        }))),
+        allowedProcessTypes: v.array(v.string()), // "recruitment", "survey"
+        defaultDashboardSlug: v.optional(v.string()),
+        isSystemRole: v.optional(v.boolean()), // Prevent modification of core roles
+    }).index("by_slug", ["slug"]),
+
+    dashboards: defineTable({
+        slug: v.string(), // e.g. "guest_dashboard"
+        name: v.string(),
+        description: v.optional(v.string()),
+        // Layout Config: list of rows/cols OR simple list of blockIds
+        layout: v.array(v.object({
+            blockId: v.id("block_instances"),
+            width: v.optional(v.number()), // Grid columns (e.g. 12 max)
+            config: v.optional(v.any()), // Override config unique to this placement
+        })),
+    }).index("by_slug", ["slug"]),
 
     // stage_types table removed - now hardcoded constants
 
@@ -19,6 +150,7 @@ export default defineSchema({
         name: v.optional(v.string()), // For admin ID
         config: v.any(), // JSON content (label, placeholder, etc.)
         version: v.optional(v.number()),
+        parentId: v.optional(v.id("block_instances")), // Track origin of copied blocks
     }),
 
     stage_templates: defineTable({
@@ -35,10 +167,11 @@ export default defineSchema({
     }),
 
     stages: defineTable({
-        cohortId: v.id("cohorts"),
+        programId: v.id("programs"), // Renamed from cohortId
         name: v.string(),
         type: v.string(),
         config: v.any(),
+        description: v.optional(v.string()), // Added for UI helper text
         blockIds: v.optional(v.array(v.id("block_instances"))), // New Block Architecture
         automations: v.optional(v.array(v.object({
             trigger: v.string(),
@@ -47,9 +180,9 @@ export default defineSchema({
         assignees: v.optional(v.array(v.string())),
         sourceTemplateId: v.optional(v.id("stage_templates")),
         originalStageId: v.optional(v.string()), // For migration tracking (the old string ID)
-    }).index("by_cohort", ["cohortId"]),
+    }).index("by_program", ["programId"]), // Renamed index
 
-    cohorts: defineTable({
+    programs: defineTable({ // Renamed from cohorts
         name: v.string(), // e.g., "Batch 2026"
         slug: v.string(), // e.g., "batch-2026"
         isActive: v.boolean(),
@@ -57,57 +190,33 @@ export default defineSchema({
         endDate: v.optional(v.number()),
 
         // Who can apply?
-        // Who can apply?
         openPositions: v.optional(v.array(v.object({
             committee: v.string(), // e.g. "Marketing"
             roles: v.array(v.string()) // e.g. ["Graphic Designer", "Video Editor"]
         }))),
+        stageIds: v.optional(v.array(v.id("stages"))), // Ordered list of stages
 
-        // THE PIPELINE CONFIGURATION - DEPRECATED (Moving to 'stages' table)
-        pipeline: v.optional(v.array(v.object({
-            id: v.string(),        // e.g., "initial-form"
-            name: v.string(),      // e.g., "Initial Application"
-            type: v.string(),      // "form" | "interview" | "video" | "static" | "completed"
-
-            // For "form" type, this holds the JSON Schema or Field Definitions
-            formConfig: v.optional(v.array(v.object({
-                id: v.string(),
-                label: v.string(),
-                type: v.string(), // "text", "email", "textarea", "select", "number"
-                options: v.optional(v.array(v.string())),
-                required: v.boolean(),
-                placeholder: v.optional(v.string()),
-            }))),
-
-            description: v.optional(v.string()), // For UI display
-
-            // Automation & Access
-            automations: v.optional(v.array(v.object({
-                trigger: v.string(), // "on-complete"
-                action: v.string(), // "email-applicant", "notify-admin"
-            }))),
-            assignees: v.optional(v.array(v.string())), // Roles that handle this stage (e.g., "reviewer")
-        }))),
-
-        // NEW: Ordered list of stage references
-        stageIds: v.optional(v.array(v.id("stages"))),
     }).index("by_slug", ["slug"]).index("by_active", ["isActive"]),
 
-    applications: defineTable({
+    processes: defineTable({
         userId: v.id("users"),
-        cohortId: v.optional(v.id("cohorts")), // Make optional for migration safety, but should be required effectively
-        currentStageId: v.string(),
 
-        // Store data keyed by stage ID to allow multiple forms
-        // e.g., { "initial-form": { name: "..." }, "skills-test": { score: 90 } }
-        stageData: v.optional(v.any()),
+        // Context
+        type: v.string(), // "recruitment", "recommitment", "loa_request"
+        programId: v.optional(v.id("programs")), // The Time Cycle this belongs to
 
-        status: v.string(), // "pending", "approved", "rejected", "withdrawn"
+        // State
+        currentStageId: v.id("stages"),
+        status: v.string(), // "in_progress", "approved", "rejected", "withdrawn"
+
+        // Data Store
+        data: v.optional(v.any()), // { [stageId]: { ... } }
+
         updatedAt: v.number(),
-    }).index("by_user", ["userId"]).index("by_cohort", ["cohortId"]),
+    }).index("by_user", ["userId"]).index("by_type", ["type"]),
 
     reviews: defineTable({
-        applicationId: v.id("applications"),
+        processId: v.id("processes"), // Replaces applicationId
         reviewerId: v.id("users"),
         stageId: v.optional(v.id("stages")), // Link review to a specific stage
         generalScore: v.optional(v.number()), // Overall score
@@ -115,18 +224,19 @@ export default defineSchema({
         blockData: v.optional(v.any()), // JSON: { [blockId]: { score: 10, comment: "Good", availability: [...] } }
         createdAt: v.number(),
     })
-        .index("by_application", ["applicationId"])
-        .index("by_stage_application", ["stageId", "applicationId"]),
+        .index("by_process", ["processId"])
+        .index("by_stage_process", ["stageId", "processId"]),
 
-    interview_slots: defineTable({
-        schoolId: v.optional(v.id("cohorts")), // Optional link to cohort/school context
-        blockId: v.string(), // Link to the specific block instance (block.id)
-        reviewerId: v.optional(v.id("users")), // Specific host
+    events: defineTable({ // Renamed from interview_slots
+        programId: v.optional(v.id("programs")), // Renamed from schoolId/cohortId
+        blockId: v.id("block_instances"), // Link to the specific block instance (block.id)
+        hostId: v.optional(v.id("users")), // Renamed from reviewerId
         startTime: v.number(),
         endTime: v.number(),
         maxAttendees: v.number(), // usually 1
-        attendees: v.array(v.id("users")), // Applicants who booked
+        attendees: v.array(v.id("users")), // Users who booked
         status: v.string(), // "open", "full", "cancelled"
+        type: v.optional(v.string()), // "interview", "meeting"
     })
         .index("by_block", ["blockId"])
         .index("by_start_time", ["startTime"]),
@@ -136,7 +246,7 @@ export default defineSchema({
         userId: v.id("users"), // Owner
         name: v.optional(v.string()), // Original filename
         type: v.optional(v.string()), // MIME type
-        applicationId: v.optional(v.id("applications")), // Link to application context if available
+        processId: v.optional(v.id("processes")), // Replaces applicationId
         createdAt: v.number(),
     }).index("by_storageId", ["storageId"]).index("by_user", ["userId"]),
 });

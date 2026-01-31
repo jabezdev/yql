@@ -82,7 +82,7 @@ export interface BlockDefinition {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ConfigEditor: React.FC<BlockConfigProps<any>>;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ApplicantView: React.FC<ApplicantViewProps<any, any>>;
+    ParticipantView: React.FC<ApplicantViewProps<any, any>>;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ReviewerView: React.FC<ReviewerViewProps<any, any, any>>;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -95,7 +95,7 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         type: 'form_input',
         title: 'Form Field',
         ConfigEditor: FormInput.ConfigEditor,
-        ApplicantView: FormInput.ApplicantView,
+        ParticipantView: FormInput.ParticipantView,
         ReviewerView: FormInput.ReviewerView,
         validate: FormInput.validate
     },
@@ -103,7 +103,7 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         type: 'content',
         title: 'Static Content',
         ConfigEditor: StaticContent.ConfigEditor,
-        ApplicantView: StaticContent.ApplicantView,
+        ParticipantView: StaticContent.ParticipantView,
         ReviewerView: StaticContent.ReviewerView,
         validate: StaticContent.validate
     },
@@ -111,7 +111,7 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         type: 'rich_text_input',
         title: 'Long Answer',
         ConfigEditor: RichTextInput.ConfigEditor,
-        ApplicantView: RichTextInput.ApplicantView,
+        ParticipantView: RichTextInput.ParticipantView,
         ReviewerView: RichTextInput.ReviewerView,
         validate: RichTextInput.validate
     },
@@ -119,7 +119,7 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         type: 'calendar_booking',
         title: 'Interview Booking',
         ConfigEditor: CalendarBooking.ConfigEditor,
-        ApplicantView: CalendarBooking.ApplicantView,
+        ParticipantView: CalendarBooking.ParticipantView,
         ReviewerView: CalendarBooking.ReviewerView,
         validate: CalendarBooking.validate
     },
@@ -127,7 +127,7 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         type: 'file_upload',
         title: 'File Upload',
         ConfigEditor: FileUpload.ConfigEditor,
-        ApplicantView: FileUpload.ApplicantView,
+        ParticipantView: FileUpload.ParticipantView,
         ReviewerView: FileUpload.ReviewerView,
         validate: FileUpload.validate
     },
@@ -135,7 +135,7 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         type: 'link_input',
         title: 'Link Submission',
         ConfigEditor: LinkInput.ConfigEditor,
-        ApplicantView: LinkInput.ApplicantView,
+        ParticipantView: LinkInput.ParticipantView,
         ReviewerView: LinkInput.ReviewerView,
         validate: LinkInput.validate
     },
@@ -143,7 +143,7 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         type: 'review_rubric',
         title: 'Review Rubric',
         ConfigEditor: ReviewRubric.ConfigEditor,
-        ApplicantView: ReviewRubric.ApplicantView,
+        ParticipantView: ReviewRubric.ParticipantView,
         ReviewerView: ReviewRubric.ReviewerView,
         validate: ReviewRubric.validate
     },
@@ -151,7 +151,7 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         type: 'quiz',
         title: 'Quiz',
         ConfigEditor: Quiz.ConfigEditor,
-        ApplicantView: Quiz.ApplicantView,
+        ParticipantView: Quiz.ParticipantView,
         ReviewerView: Quiz.ReviewerView,
         validate: Quiz.validate
     },
@@ -159,7 +159,7 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         type: 'coding_test',
         title: 'Coding Challenge',
         ConfigEditor: CodingTest.ConfigEditor,
-        ApplicantView: CodingTest.ApplicantView,
+        ParticipantView: CodingTest.ParticipantView,
         ReviewerView: CodingTest.ReviewerView,
         validate: CodingTest.validate
     },
@@ -167,7 +167,7 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         type: 'checklist',
         title: 'Checklist',
         ConfigEditor: Checklist.ConfigEditor,
-        ApplicantView: Checklist.ApplicantView,
+        ParticipantView: Checklist.ParticipantView,
         ReviewerView: Checklist.ReviewerView,
         validate: Checklist.validate
     },
@@ -175,7 +175,7 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         type: 'event_rsvp',
         title: 'Event RSVP',
         ConfigEditor: EventRSVP.ConfigEditor,
-        ApplicantView: EventRSVP.ApplicantView,
+        ParticipantView: EventRSVP.ParticipantView,
         ReviewerView: EventRSVP.ReviewerView,
         validate: EventRSVP.validate
     },
@@ -183,7 +183,7 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         type: 'decision_response',
         title: 'Offer Decision',
         ConfigEditor: DecisionResponse.ConfigEditor,
-        ApplicantView: DecisionResponse.ApplicantView,
+        ParticipantView: DecisionResponse.ParticipantView,
         ReviewerView: DecisionResponse.ReviewerView,
         validate: DecisionResponse.validate
     },
@@ -191,7 +191,7 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         type: 'decision_gate',
         title: 'Decision Gate',
         ConfigEditor: DecisionGate.ConfigEditor,
-        ApplicantView: DecisionGate.ApplicantView,
+        ParticipantView: DecisionGate.ParticipantView,
         ReviewerView: DecisionGate.ReviewerView,
         validate: DecisionGate.validate
     },
@@ -199,7 +199,7 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         type: 'auto_score',
         title: 'Auto Score',
         ConfigEditor: AutoScore.ConfigEditor,
-        ApplicantView: AutoScore.ApplicantView,
+        ParticipantView: AutoScore.ParticipantView,
         ReviewerView: AutoScore.ReviewerView,
         validate: AutoScore.validate
     },
@@ -207,7 +207,7 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         type: 'access_gate',
         title: 'Access Gate',
         ConfigEditor: AccessGate.ConfigEditor,
-        ApplicantView: AccessGate.ApplicantView,
+        ParticipantView: AccessGate.ParticipantView,
         ReviewerView: AccessGate.ReviewerView,
         validate: AccessGate.validate
     },
@@ -215,7 +215,7 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         type: 'video_response',
         title: 'Video Response',
         ConfigEditor: VideoResponse.ConfigEditor,
-        ApplicantView: VideoResponse.ApplicantView,
+        ParticipantView: VideoResponse.ParticipantView,
         ReviewerView: VideoResponse.ReviewerView,
         validate: VideoResponse.validate
     },

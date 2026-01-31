@@ -13,13 +13,12 @@ interface DynamicPipelineRendererProps {
 }
 
 export default function DynamicPipelineRenderer({ application, stages }: DynamicPipelineRendererProps) {
-    const submitStage = useMutation(api.applications.submitStage);
+    const submitStage = useMutation(api.processes.submitStage);
     const [isSaving, setIsSaving] = useState(false);
 
     // Find current stage config from pipeline/stages
     const currentStageConfig = stages.find((p: any) =>
         (p._id && p._id === application.currentStageId) ||
-        (p.id && p.id === application.currentStageId) ||
         (p.originalStageId && p.originalStageId === application.currentStageId)
     );
 
@@ -31,7 +30,7 @@ export default function DynamicPipelineRenderer({ application, stages }: Dynamic
         setIsSaving(true);
         try {
             await submitStage({
-                applicationId: application._id,
+                processId: application._id,
                 stageId: currentStageConfig._id || currentStageConfig.id,
                 data
             });

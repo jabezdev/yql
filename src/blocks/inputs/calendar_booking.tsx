@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { type BlockConfigProps, type ApplicantViewProps, type ReviewerViewProps } from "../registry";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { type Id } from "../../../convex/_generated/dataModel";
 import { Calendar, Clock, Loader, Trash2, Plus } from "lucide-react";
 
 // --- Configuration Editor ---
@@ -15,7 +16,7 @@ export const ConfigEditor: React.FC<BlockConfigProps> = ({ config, onChange }) =
             <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Instruction Text</label>
                 <input
-                    value={config.label || "Select an interview slot"}
+                    value={config.label || "Select a slot"}
                     onChange={e => handleChange('label', e.target.value)}
                     className="w-full border p-2 rounded text-sm"
                 />
@@ -31,7 +32,7 @@ export const ConfigEditor: React.FC<BlockConfigProps> = ({ config, onChange }) =
                     />
                 </div>
                 <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Max Applicants / Slot</label>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Max Attendees / Slot</label>
                     <input
                         type="number"
                         value={config.maxAttendees || 1}
@@ -44,25 +45,24 @@ export const ConfigEditor: React.FC<BlockConfigProps> = ({ config, onChange }) =
     );
 };
 
-// --- Applicant View ---
-export const ApplicantView: React.FC<ApplicantViewProps> = ({ block, value, onChange }) => {
-    // value here could be the slotId if they booked one? Or we just rely on `getMyBookings`
+// --- Participant View ---
+export const ParticipantView: React.FC<ApplicantViewProps> = ({ block, onChange }) => {
     const { config } = block;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const slots = useQuery(api.interviews.getSlotsForBlock, { blockId: block._id }) || [];
+    const slots = useQuery(api.events.getEventsForBlock, { blockId: block._id }) || [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const myBookings = useQuery(api.interviews.getMyBookings, { blockId: block._id });
-    const bookSlot = useMutation(api.interviews.bookSlot);
-    const cancelBooking = useMutation(api.interviews.cancelBooking);
+    const myBookings = useQuery(api.events.getMyBookings, { blockId: block._id });
+    const bookSlot = useMutation(api.events.bookEvent);
+    const cancelBooking = useMutation(api.events.cancelBooking);
 
-    const handleBook = async (slotId: any) => {
-        await bookSlot({ slotId });
-        onChange(slotId); // Save slot ID as the answer just in case for easy ref
+    const handleBook = async (eventId: any) => {
+        await bookSlot({ eventId });
+        onChange(eventId);
     };
 
-    const handleCancel = async (slotId: any) => {
+    const handleCancel = async (eventId: any) => {
         if (confirm("Cancel this booking?")) {
-            await cancelBooking({ slotId });
+            await cancelBooking({ eventId });
             onChange(null);
         }
     };
@@ -70,7 +70,7 @@ export const ApplicantView: React.FC<ApplicantViewProps> = ({ block, value, onCh
     if (slots === undefined || myBookings === undefined) return <div className="p-4 text-center"><Loader className="animate-spin inline" /></div>;
 
     const availableSlots = slots.filter((s: { status: string; attendees: string | any[]; maxAttendees: number; }) => s.status === 'open' && s.attendees.length < s.maxAttendees);
-    const bookedSlot = myBookings[0]; // Assuming 1 booking per block for now
+    const bookedSlot = myBookings[0];
 
     return (
         <div className="mb-6">
@@ -121,15 +121,12 @@ export const ApplicantView: React.FC<ApplicantViewProps> = ({ block, value, onCh
 
 // --- Reviewer View (Manage Slots) ---
 export const ReviewerView: React.FC<ReviewerViewProps> = ({ block, isEditable }) => {
-    // NOTE: If isEditable is true (Reviewer Mode), they can ADD slots.
-    // If false (Admin viewing submission), they just see what was booked? 
-    // Actually Reviewer mode serves dual purpose here: Setting up availability.
 
     const { config } = block;
-    const createSlots = useMutation(api.interviews.createSlots);
+    const createEvents = useMutation(api.events.createEvents);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const slots = useQuery(api.interviews.getSlotsForBlock, { blockId: block._id }) || [];
-    const deleteSlot = useMutation(api.interviews.deleteSlot);
+    const slots = useQuery(api.events.getEventsForBlock, { blockId: block._id }) || [];
+    const deleteEvent = useMutation(api.events.deleteEvent);
 
     const [newDate, setNewDate] = useState("");
     const [newTime, setNewTime] = useState("");
@@ -139,15 +136,18 @@ export const ReviewerView: React.FC<ReviewerViewProps> = ({ block, isEditable })
         const start = new Date(`${newDate}T${newTime}`);
         const end = new Date(start.getTime() + (config.duration || 30) * 60000);
 
-        await createSlots({
+        await createEvents({
             blockId: block._id,
             slots: [{
                 startTime: start.getTime(),
                 endTime: end.getTime(),
                 maxAttendees: config.maxAttendees || 1
-            }]
+            }],
+            type: "interview" // Default generic booking type
         });
         // Reset (optional)
+        setNewDate("");
+        setNewTime("");
     };
 
     if (!isEditable) {
@@ -155,8 +155,7 @@ export const ReviewerView: React.FC<ReviewerViewProps> = ({ block, isEditable })
             <div className="mb-4">
                 <div className="text-xs font-bold text-gray-400 uppercase mb-1">Booking Status</div>
                 <div className="text-gray-500 italic text-sm">
-                    {/* Ideally show what the applicant booked here, but we need applicantValue passed correctly */}
-                    (Booking details visible in applicant context)
+                    (Booking details visible in participant context)
                 </div>
             </div>
         );
@@ -195,7 +194,7 @@ export const ReviewerView: React.FC<ReviewerViewProps> = ({ block, isEditable })
                                 {slot.attendees.length} / {slot.maxAttendees} Booked
                             </span>
                         </div>
-                        <button onClick={() => deleteSlot({ slotId: slot._id })} className="text-gray-400 hover:text-red-500">
+                        <button onClick={() => slot._id && deleteEvent({ eventId: slot._id as Id<"events"> })} className="text-gray-400 hover:text-red-500">
                             <Trash2 size={14} />
                         </button>
                     </div>

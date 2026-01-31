@@ -54,7 +54,7 @@ export const ConfigEditor: React.FC<BlockConfigProps> = ({ config, onChange }) =
 };
 
 // --- Applicant View ---
-export const ApplicantView: React.FC<ApplicantViewProps> = ({ block, value, onChange, readOnly }) => {
+export const ParticipantView: React.FC<ApplicantViewProps> = ({ block, value, onChange, readOnly }) => {
     const { config } = block;
     const code = value !== undefined ? value : (config.template || "");
 

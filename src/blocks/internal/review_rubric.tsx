@@ -63,7 +63,7 @@ export const ConfigEditor: React.FC<BlockConfigProps> = ({ config, onChange }) =
 };
 
 // --- Applicant View (Hidden) ---
-export const ApplicantView: React.FC<ApplicantViewProps> = () => {
+export const ParticipantView: React.FC<ApplicantViewProps> = () => {
     return null; // Applicant sees nothing
 };
 

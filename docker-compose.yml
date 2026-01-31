@@ -10,14 +10,4 @@ services:
       - "3000:80"
     restart: always
 
-  seeder:
-    image: node:20-alpine
-    working_dir: /app
-    volumes:
-      - .:/app
-    environment:
-      - VITE_CONVEX_URL=${VITE_CONVEX_URL}
-      - ADMIN_EMAIL=${ADMIN_EMAIL}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - ADMIN_NAME=${ADMIN_NAME}
-    command: sh -c "npm install dotenv convex && node scripts/seedAdmin.js"
+

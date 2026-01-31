@@ -6,11 +6,7 @@ import { useEffect } from "react";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
-import DashboardLayout from "./layouts/DashboardLayout";
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import CohortManager from "./pages/admin/CohortManager";
-import ReviewerDashboard from "./pages/reviewer/ReviewerDashboard";
-import ApplicantDashboard from "./pages/applicant/ApplicantDashboard";
+import CoreDashboard from "./pages/CoreDashboard";
 import { Loader2 } from "lucide-react";
 
 function UserIdSync() {
@@ -22,14 +18,12 @@ function UserIdSync() {
 }
 
 // Protected Route wrapper
-function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) {
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useConvexAuth();
   const user = useQuery(api.users.getMe);
 
   // 1. Clerk Loading or Convex Query Loading
   if (user === undefined) {
-    // Note: useConvexAuth 'isLoading' isn't destructured but 'user === undefined' covers Convex load.
-    // If Clerk is loading, isAuthenticated might be false, but let's assume useConvexAuth handles it or we should check isLoading too.
     return (
       <div className="h-screen w-full flex items-center justify-center">
         <Loader2 className="animate-spin text-brand-blue" />
@@ -53,28 +47,8 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode,
     );
   }
 
-  // 4. Authenticated & Synced -> Check Roles
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
-    if (user.role === 'admin') return <Navigate to="/admin" replace />;
-    if (user.role === 'reviewer') return <Navigate to="/reviewer" replace />;
-    return <Navigate to="/applicant" replace />;
-  }
-
-  // 5. Render
-  return (
-    <>
-      {/* Kept here just to ensure updates happen if needed, though usually handled above */}
-      {children}
-    </>
-  );
-}
-
-function RoleDispatcher() {
-  const user = useQuery(api.users.getMe);
-  if (!user) return null; // Or loader
-  if (user.role === 'admin') return <Navigate to="/admin" replace />;
-  if (user.role === 'reviewer') return <Navigate to="/reviewer" replace />;
-  return <Navigate to="/applicant" replace />;
+  // 4. Render
+  return <>{children}</>;
 }
 
 function App() {
@@ -95,35 +69,17 @@ function App() {
           </>
         } />
 
-        {/* Redirect generic dashboard link to correct role */}
+        {/* Unified Core Dashboard */}
         <Route path="/dashboard" element={
           <ProtectedRoute>
-            <RoleDispatcher />
+            <CoreDashboard />
           </ProtectedRoute>
         } />
 
-        <Route element={<DashboardLayout />}>
-          <Route path="/admin" element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <AdminDashboard />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin/cohorts" element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <CohortManager />
-            </ProtectedRoute>
-          } />
-          <Route path="/reviewer" element={
-            <ProtectedRoute allowedRoles={['reviewer']}>
-              <ReviewerDashboard />
-            </ProtectedRoute>
-          } />
-          <Route path="/applicant" element={
-            <ProtectedRoute allowedRoles={['applicant']}>
-              <ApplicantDashboard />
-            </ProtectedRoute>
-          } />
-        </Route>
+        {/* Catch-all for legacy routes - redirect to dashboard */}
+        <Route path="/admin/*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/applicant/*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/reviewer/*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
   );
