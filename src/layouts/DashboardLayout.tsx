@@ -1,26 +1,44 @@
 import { Outlet, useNavigate, Link, useLocation } from "react-router-dom";
-import { clearAuthUser, getAuthUser } from "../lib/auth";
-import { useEffect, useState } from "react";
-import { LogOut } from "lucide-react";
+import { useAuth } from "@clerk/clerk-react";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { useMutation } from "convex/react";
+import { useEffect } from "react";
+import { LogOut, Loader2 } from "lucide-react";
 import { AuthErrorBoundary } from "../components/AuthErrorBoundary";
 
 export default function DashboardLayout() {
     const navigate = useNavigate();
     const location = useLocation();
-    const [user] = useState(getAuthUser());
+    const { signOut } = useAuth();
+    const user = useQuery(api.users.getMe);
+    const storeUser = useMutation(api.users.storeUser);
 
     useEffect(() => {
-        if (!user) {
-            navigate("/login");
+        if (user) {
+            storeUser();
         }
-    }, [user, navigate]);
+    }, [user, storeUser]);
 
-    const handleLogout = () => {
-        clearAuthUser();
+    // We rely on the ProtectedRoute wrapper in App.tsx to handle redirection if not logged in.
+    // However, since this layout wraps the dashboard, we can just render null or loader until user is loaded.
+
+    if (user === undefined) return (
+        <div className="h-screen w-full flex flex-col items-center justify-center bg-gray-50 gap-4">
+            <Loader2 className="animate-spin text-brand-blue" size={40} />
+            <p className="text-gray-400 font-medium animate-pulse">Loading Dashboard...</p>
+        </div>
+    );
+
+    if (user === null) {
+        // Should have been redirected by ProtectedRoute, but just in case
+        return null;
+    }
+
+    const handleLogout = async () => {
+        await signOut();
         navigate("/");
     };
-
-    if (!user) return null;
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -45,8 +63,11 @@ export default function DashboardLayout() {
                     )}
 
                     <div className="flex items-center gap-4">
-                        <span className="text-sm font-medium">{user.name}</span>
-                        <button onClick={handleLogout} className="p-2 hover:bg-gray-100 rounded-full text-red-500" title="Logout">
+                        <div className="flex flex-col items-end">
+                            <span className="text-sm font-medium text-gray-900">{user.name}</span>
+                            <span className="text-xs text-gray-500">{user.email}</span>
+                        </div>
+                        <button onClick={handleLogout} className="p-2 hover:bg-red-50 rounded-full text-red-500 transition-colors" title="Logout">
                             <LogOut size={20} />
                         </button>
                     </div>

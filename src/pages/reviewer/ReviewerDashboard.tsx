@@ -1,25 +1,22 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
-import { api } from "../../../convex/_generated/api";
-import { getAuthUser } from "../../lib/auth";
+import type { Id } from "../../../convex/_generated/dataModel";
 
 export default function ReviewerDashboard() {
-    const user = getAuthUser();
-    const applications = useQuery(api.applications.getAllApplications, { token: user?.token || "" });
+    const applications = useQuery(api.applications.getAllApplications, {});
     const submitReview = useMutation(api.reviews.submitReview);
-    const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
+    const [selectedAppId, setSelectedAppId] = useState<Id<"applications"> | null>(null);
     const [score, setScore] = useState(0);
     const [notes, setNotes] = useState("");
 
-    if (!applications) return <div>Loading...</div>;
+    if (!applications) return <div className="p-8 text-center text-gray-500">Loading applications...</div>;
 
     const handleReview = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedAppId || !user) return;
+        if (!selectedAppId) return;
 
         await submitReview({
-            token: user.token,
-            applicationId: selectedAppId as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+            applicationId: selectedAppId,
             score,
             notes
         });

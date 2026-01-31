@@ -1,46 +1,36 @@
 import { useState } from "react";
-import DynamicForm, { type FormField } from "./DynamicForm";
+import DynamicForm from "./DynamicForm";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { getAuthUser } from "../../lib/auth";
 
-interface PipelineStage {
-    id: string;
-    name: string;
-    type: string;
-    kind?: string;
-    description?: string;
-    formConfig?: FormField[];
-}
+
 
 interface DynamicPipelineRendererProps {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     application: any; // The full application record
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    cohort: any;      // The full cohort record
+    stages: any[];    // List of stages
 }
 
-export default function DynamicPipelineRenderer({ application, cohort }: DynamicPipelineRendererProps) {
+export default function DynamicPipelineRenderer({ application, stages }: DynamicPipelineRendererProps) {
     const submitStage = useMutation(api.applications.submitStage);
     const [isSaving, setIsSaving] = useState(false);
-    const user = getAuthUser();
 
-    // Find current stage config from cohort pipeline
-    const currentStageConfig = cohort.pipeline.find((p: PipelineStage) => p.id === application.currentStageId);
+    // Find current stage config from pipeline/stages
+    const currentStageConfig = stages.find((p: any) =>
+        (p._id && p._id === application.currentStageId) ||
+        (p.id && p.id === application.currentStageId) ||
+        (p.originalStageId && p.originalStageId === application.currentStageId)
+    );
 
     if (!currentStageConfig) {
         return <div className="p-4 text-red-500">Error: Invalid Stage Configuration</div>;
     }
 
     const handleFormSubmit = async (data: Record<string, unknown>) => {
-        if (!user || !user.token) {
-            alert("You are not logged in.");
-            return;
-        }
         setIsSaving(true);
         try {
             await submitStage({
-                token: user.token,
                 applicationId: application._id,
                 stageId: currentStageConfig.id,
                 data
@@ -66,12 +56,12 @@ export default function DynamicPipelineRenderer({ application, cohort }: Dynamic
                 <h3 className="text-xl font-bold mb-2">{currentStageConfig.name}</h3>
                 <p className="text-gray-600 mb-6">{currentStageConfig.description}</p>
                 <DynamicForm
-                    fields={currentStageConfig.formConfig}
+                    fields={currentStageConfig.config?.formConfig || currentStageConfig.formConfig} // generic config or legacy
                     initialData={existingData}
                     onSubmit={handleFormSubmit}
                     isLoading={isSaving}
                     submitLabel="Submit & Continue"
-                    key={currentStageConfig.id}
+                    key={currentStageConfig.id || currentStageConfig._id}
                 />
             </div>
         );

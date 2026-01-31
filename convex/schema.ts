@@ -4,25 +4,41 @@ import { v } from "convex/values";
 export default defineSchema({
     users: defineTable({
         email: v.string(),
-        password: v.string(),
         name: v.string(),
-        role: v.string(), // "admin", "reviewer", "applicant" - keeping as string for flexibility
-        linkedCohortIds: v.optional(v.array(v.id("cohorts"))), // For reviewers/admins to specific cohorts
-    }).index("by_email", ["email"]),
+        role: v.union(v.literal("admin"), v.literal("reviewer"), v.literal("applicant")),
+        tokenIdentifier: v.optional(v.string()),
+        linkedCohortIds: v.optional(v.array(v.id("cohorts"))),
+    })
+        .index("by_email", ["email"])
+        .index("by_tokenIdentifier", ["tokenIdentifier"]),
 
-    sessions: defineTable({
-        userId: v.id("users"),
-        token: v.string(),
-        expiresAt: v.number(),
-    }).index("by_token", ["token"]),
+    // stage_types table removed - now hardcoded constants
 
-    stage_types: defineTable({
-        key: v.string(), // e.g. "video-interview"
-        label: v.string(), // e.g. "Video Introduction"
+    stage_templates: defineTable({
+        name: v.string(),
+        type: v.string(), // "form", "interview", "video", "static", "completed"
         description: v.optional(v.string()),
-        icon: v.string(), // Lucide icon name, e.g. "Video"
-        kind: v.string(), // "form" | "static" | "completed" - determines rendering behavior
-    }).index("by_key", ["key"]),
+        config: v.any(), // JSON content (formConfig, etc.)
+        automations: v.optional(v.array(v.object({
+            trigger: v.string(),
+            action: v.string(),
+        }))),
+        assignees: v.optional(v.array(v.string())),
+    }),
+
+    stages: defineTable({
+        cohortId: v.id("cohorts"),
+        name: v.string(),
+        type: v.string(),
+        config: v.any(),
+        automations: v.optional(v.array(v.object({
+            trigger: v.string(),
+            action: v.string(),
+        }))),
+        assignees: v.optional(v.array(v.string())),
+        sourceTemplateId: v.optional(v.id("stage_templates")),
+        originalStageId: v.optional(v.string()), // For migration tracking (the old string ID)
+    }).index("by_cohort", ["cohortId"]),
 
     cohorts: defineTable({
         name: v.string(), // e.g., "Batch 2026"
@@ -38,8 +54,8 @@ export default defineSchema({
             roles: v.array(v.string()) // e.g. ["Graphic Designer", "Video Editor"]
         }))),
 
-        // THE PIPELINE CONFIGURATION
-        pipeline: v.array(v.object({
+        // THE PIPELINE CONFIGURATION - DEPRECATED (Moving to 'stages' table)
+        pipeline: v.optional(v.array(v.object({
             id: v.string(),        // e.g., "initial-form"
             name: v.string(),      // e.g., "Initial Application"
             type: v.string(),      // "form" | "interview" | "video" | "static" | "completed"
@@ -62,7 +78,10 @@ export default defineSchema({
                 action: v.string(), // "email-applicant", "notify-admin"
             }))),
             assignees: v.optional(v.array(v.string())), // Roles that handle this stage (e.g., "reviewer")
-        })),
+        }))),
+
+        // NEW: Ordered list of stage references
+        stageIds: v.optional(v.array(v.id("stages"))),
     }).index("by_slug", ["slug"]).index("by_active", ["isActive"]),
 
     applications: defineTable({

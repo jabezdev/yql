@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useConvexAuth } from "convex/react";
 import { Container, Button } from '../ui';
 import { NAV_LINKS } from '../../constants';
 
 export default function Navbar() {
     const [isOpen, setIsOpen] = useState(false);
     const navigate = useNavigate();
+    const { isAuthenticated } = useConvexAuth();
 
     const closeMenu = () => setIsOpen(false);
 
@@ -31,12 +33,12 @@ export default function Navbar() {
                         </a>
                     ))}
                     <Button
-                        onClick={() => navigate('/login')}
+                        onClick={() => navigate(isAuthenticated ? '/dashboard' : '/login')}
                         variant="geometric-primary"
                         size="md"
                         className="py-2"
                     >
-                        Log in
+                        {isAuthenticated ? 'Dashboard' : 'Log in'}
                     </Button>
                 </div>
 
@@ -69,10 +71,10 @@ export default function Navbar() {
                         size="lg"
                         onClick={() => {
                             closeMenu();
-                            navigate('/login');
+                            navigate(isAuthenticated ? '/dashboard' : '/login');
                         }}
                     >
-                        Log in
+                        {isAuthenticated ? 'Dashboard' : 'Log in'}
                     </Button>
                 </div>
             )}

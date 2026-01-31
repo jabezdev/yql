@@ -1,6 +1,5 @@
 import { Component, type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
-import { clearAuthUser } from "../lib/auth";
 
 interface Props {
     children: ReactNode;
@@ -37,7 +36,8 @@ export class AuthErrorBoundary extends Component<Props, State> {
             error.message.includes("Invalid or expired session") ||
             error.message.includes("Forbidden")
         ) {
-            clearAuthUser();
+            // clearAuthUser(); // Legacy: Clerk handles auth state now.
+            // We just let the state update trigger the redirect.
         }
         console.error("AuthErrorBoundary caught error:", error);
     }

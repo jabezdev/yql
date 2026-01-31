@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
-import { getAuthUser } from "../../lib/auth";
 import PipelineEditor from "../../components/admin/PipelineEditor";
 import StageTypeManager from "../../components/admin/stages/StageTypeManager";
 import { Plus, Trash2, Edit2, Play, Pause, Save, X, Layout, Users, Briefcase, ChevronRight, Settings } from "lucide-react";
@@ -12,8 +11,20 @@ interface PositionGroup {
     roles: string[];
 }
 
+const TabButton = ({ id, label, icon: Icon, activeTab, setActiveTab }: { id: string, label: string, icon: React.ElementType, activeTab: string, setActiveTab: (id: string) => void }) => (
+    <button
+        onClick={() => setActiveTab(id)}
+        className={`flex items-center gap-2 px-6 py-4 border-b-2 transition font-bold text-sm ${activeTab === id
+            ? 'border-brand-blue text-brand-blue bg-blue-50/50'
+            : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+    >
+        <Icon size={18} />
+        {label}
+    </button>
+);
+
 export default function CohortManager() {
-    const user = getAuthUser();
     const cohorts = useQuery(api.cohorts.getAllCohorts);
     const updateCohort = useMutation(api.cohorts.updateCohort);
     const createCohort = useMutation(api.cohorts.createCohort);
@@ -21,7 +32,7 @@ export default function CohortManager() {
     // View State
     const [view, setView] = useState<'list' | 'create' | 'types'>('list');
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'basic' | 'positions' | 'pipeline'>('basic');
+    const [activeTab, setActiveTab] = useState<string>('basic');
 
     // Create/Edit Form State
     const [newName, setNewName] = useState("");
@@ -32,6 +43,7 @@ export default function CohortManager() {
         { committee: "Marketing", roles: ["Graphic Designer", "Content Writer"] }
     ]);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [newPipeline, setNewPipeline] = useState<any[]>([
         {
             id: "form",
@@ -53,7 +65,7 @@ export default function CohortManager() {
     if (!cohorts) return <div className="p-8 flex items-center justify-center text-gray-400">Loading cohorts...</div>;
 
     const toggleActive = async (id: Id<"cohorts">, currentState: boolean) => {
-        await updateCohort({ token: user?.token || "", cohortId: id, isActive: !currentState });
+        await updateCohort({ cohortId: id, isActive: !currentState });
     };
 
     const startEdit = (cohort: Doc<"cohorts">) => {
@@ -64,6 +76,7 @@ export default function CohortManager() {
         // Handle migration from old flat array to new structure if needed
         if (cohort.openPositions && cohort.openPositions.length > 0 && typeof (cohort.openPositions as any)[0] === 'string') {
             // Legacy migration display
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             setNewOpenPositions([{ committee: "General", roles: cohort.openPositions as any as string[] }]);
         } else {
             setNewOpenPositions(cohort.openPositions || []);
@@ -87,7 +100,6 @@ export default function CohortManager() {
 
             if (editingId) {
                 await updateCohort({
-                    token: user?.token || "",
                     cohortId: editingId as Id<"cohorts">,
                     ...payload
                 });
@@ -95,7 +107,6 @@ export default function CohortManager() {
             } else {
                 const now = Date.now();
                 await createCohort({
-                    token: user?.token || "",
                     ...payload,
                     startDate: now,
                 });
@@ -137,18 +148,8 @@ export default function CohortManager() {
         setNewOpenPositions(newOpenPositions.filter((_, i) => i !== comIdx));
     };
 
-    const TabButton = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: React.ElementType }) => (
-        <button
-            onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-2 px-6 py-4 border-b-2 transition font-bold text-sm ${activeTab === id
-                ? 'border-brand-blue text-brand-blue bg-blue-50/50'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}
-        >
-            <Icon size={18} />
-            {label}
-        </button>
-    );
+    // TabButton moved outside
+    // const TabButton = ...
 
     return (
         <div className="p-6">
@@ -277,9 +278,9 @@ export default function CohortManager() {
 
                     {/* Tabs */}
                     <div className="flex px-8 border-b bg-gray-50/50">
-                        <TabButton id="basic" label="Basic Details" icon={Layout} />
-                        <TabButton id="positions" label="Open Positions" icon={Briefcase} />
-                        <TabButton id="pipeline" label="Pipeline & Forms" icon={Users} />
+                        <TabButton activeTab={activeTab} setActiveTab={setActiveTab} id="basic" label="Basic Details" icon={Layout} />
+                        <TabButton activeTab={activeTab} setActiveTab={setActiveTab} id="positions" label="Open Positions" icon={Briefcase} />
+                        <TabButton activeTab={activeTab} setActiveTab={setActiveTab} id="pipeline" label="Pipeline & Forms" icon={Users} />
                     </div>
 
                     {/* Scrollable Content Area */}

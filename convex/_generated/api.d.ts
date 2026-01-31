@@ -14,7 +14,7 @@ import type * as cohorts from "../cohorts.js";
 import type * as migrations from "../migrations.js";
 import type * as reviews from "../reviews.js";
 import type * as seed from "../seed.js";
-import type * as stageTypes from "../stageTypes.js";
+import type * as stages from "../stages.js";
 import type * as users from "../users.js";
 
 import type {
@@ -30,7 +30,7 @@ declare const fullApi: ApiFromModules<{
   migrations: typeof migrations;
   reviews: typeof reviews;
   seed: typeof seed;
-  stageTypes: typeof stageTypes;
+  stages: typeof stages;
   users: typeof users;
 }>;
 

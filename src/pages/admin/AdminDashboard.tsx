@@ -1,16 +1,13 @@
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { getAuthUser } from "../../lib/auth";
 import { useState } from "react";
 import { Plus, UploadCloud } from "lucide-react";
 
 export default function AdminDashboard() {
-    const user = getAuthUser();
     const activeCohort = useQuery(api.cohorts.getActiveCohort);
-    // Pass token to queries if they require it (getAllApplications requires it now)
-    const applications = useQuery(api.applications.getAllApplications, { token: user?.token || "", cohortId: activeCohort?._id });
-    const reviewers = useQuery(api.users.getReviewers, { token: user?.token || "", cohortId: activeCohort?._id });
+    const applications = useQuery(api.applications.getAllApplications, { cohortId: activeCohort?._id });
+    const reviewers = useQuery(api.users.getReviewers, { cohortId: activeCohort?._id });
 
     const updateStage = useMutation(api.applications.updateStage);
     const updateStatus = useMutation(api.applications.updateStatus);
@@ -22,7 +19,6 @@ export default function AdminDashboard() {
     // Reviewer Form State
     const [revName, setRevName] = useState("");
     const [revEmail, setRevEmail] = useState("");
-    const [revPass, setRevPass] = useState("");
 
     // Import User State
     const [showImport, setShowImport] = useState(false);
@@ -30,35 +26,29 @@ export default function AdminDashboard() {
     const [impEmail, setImpEmail] = useState("");
     const [impStage, setImpStage] = useState("agreement");
 
-    // const user = getAuthUser(); // Removed duplicate
-
     if (!applications) return <div>Loading applications...</div>;
 
     const handleStageChange = async (appId: Id<"applications">, stage: string) => {
         if (confirm(`Are you sure you want to move this applicant to ${stage}?`)) {
-            await updateStage({ token: user?.token || "", applicationId: appId, stage });
+            await updateStage({ applicationId: appId, stage });
         }
     };
 
 
     const handleStatusChange = async (appId: Id<"applications">, status: string) => {
-        await updateStatus({ token: user?.token || "", applicationId: appId, status });
+        await updateStatus({ applicationId: appId, status });
     };
 
     const handleCreateReviewer = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user) return;
         try {
             await createReviewer({
-                token: user?.token || "", // Added token (Wait, createReviewer args needs update in users.ts first?)
-                adminId: user._id,
                 name: revName,
                 email: revEmail,
-                password: revPass,
                 assignToCohortId: activeCohort?._id
             });
-            alert("Reviewer created!");
-            setRevName(""); setRevEmail(""); setRevPass("");
+            alert("Reviewer created! They can now log in.");
+            setRevName(""); setRevEmail("");
         } catch (err) {
             alert("Error: " + (err instanceof Error ? err.message : "Unknown error"));
         }
@@ -66,11 +56,8 @@ export default function AdminDashboard() {
 
     const handleImportUser = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user) return;
         try {
             await onboardUser({
-                token: user.token,
-                adminId: user._id,
                 email: impEmail,
                 name: impName,
                 targetStageId: impStage
@@ -140,14 +127,6 @@ export default function AdminDashboard() {
                                     type="email"
                                     value={revEmail}
                                     onChange={e => setRevEmail(e.target.value)}
-                                    required
-                                />
-                                <input
-                                    className="w-full border p-2 rounded text-sm"
-                                    placeholder="Password"
-                                    type="password"
-                                    value={revPass}
-                                    onChange={e => setRevPass(e.target.value)}
                                     required
                                 />
                                 <button className="w-full bg-brand-blue text-white py-2 rounded font-bold text-sm hover:bg-brand-blueDark transition">

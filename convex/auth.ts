@@ -1,75 +1,51 @@
+
 import type { QueryCtx, MutationCtx } from "./_generated/server";
-import { hashSync, compareSync } from "bcryptjs";
 
-const SESSION_DURATION = 1000 * 60 * 60 * 24 * 7; // 7 days
+export async function getViewer(ctx: QueryCtx | MutationCtx) {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+        return null;
+    }
 
-/**
- * Creates a new session for a user.
- */
-export async function createSession(ctx: MutationCtx, userId: any) {
-    const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
-    await ctx.db.insert("sessions", {
-        userId,
-        token,
-        expiresAt: Date.now() + SESSION_DURATION,
-    });
-    return token;
-}
-
-/**
- * Validates a session token and returns the user.
- * Throws if invalid.
- */
-export async function authenticate(ctx: QueryCtx | MutationCtx, token: string) {
-    const session = await ctx.db
-        .query("sessions")
-        .withIndex("by_token", (q) => q.eq("token", token))
+    // 1. Check by tokenIdentifier (Exact match)
+    const user = await ctx.db
+        .query("users")
+        .withIndex("by_tokenIdentifier", (q) => q.eq("tokenIdentifier", identity.tokenIdentifier))
         .first();
 
-    if (!session || session.expiresAt < Date.now()) {
-        throw new Error("Unauthorized: Invalid or expired session");
+    if (user) return user;
+
+    // 2. Fallback: Check by email (For invitations/migrations)
+    // Note: Clerk provides verified emails. We trust them.
+    if (identity.email) {
+        const userByEmail = await ctx.db
+            .query("users")
+            .withIndex("by_email", (q) => q.eq("email", identity.email!))
+            .first();
+
+        // If found, this user was pre-created (e.g. by admin) or from legacy system.
+        // We should ideally return it. The 'store' mutation will link it later.
+        return userByEmail;
     }
 
-    const user = await ctx.db.get(session.userId);
-    if (!user) {
-        throw new Error("Unauthorized: User not found");
-    }
-
-    return user;
+    return null;
 }
 
-/**
- * Ensures the user is an admin.
- */
-export async function ensureAdmin(ctx: QueryCtx | MutationCtx, token: string) {
-    const user = await authenticate(ctx, token);
-    if (user.role !== "admin") {
+export async function ensureAdmin(ctx: QueryCtx | MutationCtx) {
+    const user = await getViewer(ctx);
+    if (!user || user.role !== "admin") {
         throw new Error("Forbidden: Admin access only");
     }
     return user;
 }
 
-/**
- * Ensures the user is a reviewer or admin.
- */
-export async function ensureReviewer(ctx: QueryCtx | MutationCtx, token: string) {
-    const user = await authenticate(ctx, token);
-    if (user.role !== "admin" && user.role !== "reviewer") {
+export async function ensureReviewer(ctx: QueryCtx | MutationCtx) {
+    const user = await getViewer(ctx);
+    if (!user || (user.role !== "admin" && user.role !== "reviewer")) {
         throw new Error("Forbidden: Reviewer access only");
     }
     return user;
 }
 
-/**
- * Hashes a password using bcrypt (synchronously for Convex).
- */
-export async function hashPassword(password: string): Promise<string> {
-    return hashSync(password, 10);
-}
-
-/**
- * Verifies a password against a hash (synchronously for Convex).
- */
-export async function verifyPassword(password: string, hashStr: string): Promise<boolean> {
-    return compareSync(password, hashStr);
-}
+// Deprecated/No-op functions for compatibility if necessary, or just remove.
+// Removed hashPassword, verifyPassword, createSession

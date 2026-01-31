@@ -1,25 +1,35 @@
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { getAuthUser } from "../../lib/auth";
 import DynamicPipelineRenderer from "../../components/dynamic/DynamicPipelineRenderer";
 import { Rocket } from "lucide-react";
 
 export default function ApplicantDashboard() {
-    const user = getAuthUser();
-    const application = useQuery(api.applications.getApplication, user ? { token: user.token, userId: user._id } : "skip");
+    // getApplication now relies on authenticated user identity if userId is skipped or not provided
+    // But getApplication query args: { userId: v.optional(v.id("users")) }
+    // If we pass skipped userId, it defaults to caller.
+    const application = useQuery(api.applications.getApplication, {});
     const cohort = useQuery(api.cohorts.getActiveCohort);
+    const stages = useQuery(api.stages.getCohortStages, cohort ? { cohortId: cohort._id } : "skip");
     const recommit = useMutation(api.users.recommitToActiveCohort);
 
     const handleRecommit = async () => {
         try {
-            await recommit({ token: user?.token || "" });
+            await recommit({});
             window.location.reload();
         } catch (e) {
             alert("Error: " + (e instanceof Error ? e.message : "Unknown error"));
         }
     }
 
-    if (!cohort) return <div className="p-8 text-center">No active cohort currently accepting applications. Check back later!</div>;
+    if (!cohort) return (
+        <div className="p-12 text-center bg-white rounded-xl shadow-sm border border-gray-100 max-w-lg mx-auto mt-10">
+            <div className="w-16 h-16 bg-gray-100 text-gray-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Rocket size={24} />
+            </div>
+            <h2 className="text-xl font-bold text-gray-700 mb-2">No Applications Open</h2>
+            <p className="text-gray-500">There are currently no active cohorts accepting applications. Please check back later for upcoming batches.</p>
+        </div>
+    );
 
     if (!application) {
         return (
@@ -30,7 +40,6 @@ export default function ApplicantDashboard() {
                 <h2 className="text-3xl font-bold text-brand-blueDark">{cohort.name} is now open!</h2>
                 <p className="text-gray-600 text-lg">
                     You can now apply or recommit to the newest cohort.
-                    {user?.role === 'applicant' ? " Since you have an account, you can fast-track your application." : ""}
                 </p>
                 <button
                     onClick={handleRecommit}
@@ -43,12 +52,22 @@ export default function ApplicantDashboard() {
         );
     }
 
-    // Calculate active step index from dynamic pipeline
-    interface PipelineStage { id: string; name: string; }
-    const currentStepIndex = cohort.pipeline.findIndex((p: PipelineStage) => p.id === application.currentStageId);
-    // If not found (e.g. completed), handling might differ, but assuming valid ids
+    // Calculate active step index from stages
+    // Fallback to empty array if stages not loaded yet
+    const pipeline = stages || (cohort.pipeline || []);
+
+    // Check if we are using the new stages system or legacy pipeline
+    // The migration should have run, but strictly speaking we might have a gap.
+    // Ideally we rely on 'stages'.
+
+    const currentStepIndex = pipeline.findIndex((p: any) =>
+        (p._id && p._id === application.currentStageId) || // For new stages (ID match)
+        (p.id && p.id === application.currentStageId) ||   // For legacy pipeline (string id match)
+        (p.originalStageId && p.originalStageId === application.currentStageId) // For migrated stages (reference match)
+    );
+
     const activeStep = currentStepIndex !== -1 ? currentStepIndex : 0;
-    const totalSteps = cohort.pipeline.length;
+    const totalSteps = pipeline.length;
 
     return (
         <div>
@@ -62,8 +81,8 @@ export default function ApplicantDashboard() {
                         style={{ width: `${(activeStep / (totalSteps - 1)) * 100}%` }}
                     ></div>
 
-                    {cohort.pipeline.map((step: PipelineStage, idx: number) => (
-                        <div key={step.id} className={`flex flex-col items-center gap-2 bg-gray-50 px-2`}>
+                    {pipeline.map((step: any, idx: number) => (
+                        <div key={step._id || step.id} className={`flex flex-col items-center gap-2 bg-gray-50 px-2`}>
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${idx <= activeStep ? 'bg-brand-orange text-white' : 'bg-gray-300 text-gray-600'
                                 }`}>
                                 {idx + 1}
@@ -75,7 +94,14 @@ export default function ApplicantDashboard() {
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow-sm border">
-                <DynamicPipelineRenderer application={application} cohort={cohort} />
+                {currentStepIndex !== -1 ? (
+                    <DynamicPipelineRenderer application={application} stages={pipeline} />
+                ) : (
+                    <div className="text-center py-8">
+                        <p className="text-red-500 font-bold mb-2">Stage Configuration Error</p>
+                        <p className="text-gray-500 text-sm">Your application is at a stage ID "{application.currentStageId}" which no longer exists in this cohort's pipeline. Please contact support.</p>
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -1,6 +1,7 @@
+
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { authenticate, ensureAdmin, ensureReviewer } from "./auth";
+import { getViewer, ensureAdmin, ensureReviewer } from "./auth";
 
 /**
  * Gets a single application.
@@ -9,11 +10,11 @@ import { authenticate, ensureAdmin, ensureReviewer } from "./auth";
  */
 export const getApplication = query({
     args: {
-        token: v.string(),
         userId: v.optional(v.id("users"))
     },
     handler: async (ctx, args) => {
-        const user = await authenticate(ctx, args.token);
+        const user = await getViewer(ctx);
+        if (!user) throw new Error("Unauthorized");
 
         let targetUserId = user._id;
         if (args.userId) {
@@ -35,11 +36,10 @@ export const getApplication = query({
  */
 export const getAllApplications = query({
     args: {
-        token: v.string(),
         cohortId: v.optional(v.id("cohorts"))
     },
     handler: async (ctx, args) => {
-        await ensureReviewer(ctx, args.token);
+        await ensureReviewer(ctx);
 
         if (args.cohortId) {
             return await ctx.db
@@ -56,12 +56,11 @@ export const getAllApplications = query({
  */
 export const updateStatus = mutation({
     args: {
-        token: v.string(),
         applicationId: v.id("applications"),
         status: v.string(),
     },
     handler: async (ctx, args) => {
-        await ensureAdmin(ctx, args.token);
+        await ensureAdmin(ctx);
         await ctx.db.patch(args.applicationId, {
             status: args.status,
             updatedAt: Date.now(),
@@ -74,13 +73,14 @@ export const updateStatus = mutation({
  */
 export const submitStage = mutation({
     args: {
-        token: v.string(),
         applicationId: v.id("applications"),
         stageId: v.string(),
         data: v.any(), // Validated against schema below
     },
     handler: async (ctx, args) => {
-        const user = await authenticate(ctx, args.token);
+        const user = await getViewer(ctx);
+        if (!user) throw new Error("Unauthorized");
+
         const application = await ctx.db.get(args.applicationId);
 
         if (!application) throw new Error("Application not found");
@@ -91,18 +91,39 @@ export const submitStage = mutation({
         const cohort = await ctx.db.get(application.cohortId!);
         if (!cohort) throw new Error("Cohort not found");
 
-        // 1. Validate Current Stage
-        const currentStageConfig = cohort.pipeline.find(p => p.id === application.currentStageId);
+        // 1. Validate Current Stage & Fetch Pipeline
+        let currentStageConfig;
+        let pipeline: any[] = [];
+
+        if (cohort.stageIds && cohort.stageIds.length > 0) {
+            // New Schema: Fetch stages from DB
+            // We need the full list to determine "next stage"
+            // Optimization: We could just fetch the current and next if we knew the order, 
+            // but stageIds gives us the order.
+            pipeline = (await Promise.all(cohort.stageIds.map((id: any) => ctx.db.get(id)))).filter(Boolean);
+
+            currentStageConfig = pipeline.find(p => p._id === application.currentStageId || p.originalStageId === application.currentStageId);
+        } else {
+            // Fallback to legacy pipeline
+            pipeline = cohort.pipeline || [];
+            currentStageConfig = pipeline.find((p: any) => p.id === application.currentStageId);
+        }
+
         if (!currentStageConfig) throw new Error("Invalid stage configuration");
 
-        if (args.stageId !== currentStageConfig.id) {
-            throw new Error("Stage mismatch. You are trying to submit to a different stage.");
+        // Allow both ID match (new) and string ID match (legacy/migrated)
+        const isMatch = args.stageId === currentStageConfig._id || args.stageId === currentStageConfig.id || args.stageId === currentStageConfig.originalStageId;
+
+        if (!isMatch) {
+            throw new Error(`Stage mismatch. You are trying to submit to ${args.stageId} but app is at ${application.currentStageId}`);
         }
 
         // 2. Validate Data (Basic Required Check)
-        // If formConfig exists, check required fields
-        if (currentStageConfig.formConfig) {
-            for (const field of currentStageConfig.formConfig) {
+        // If formConfig exists (in config object or root depending on schema version)
+        const formConfig = currentStageConfig.config?.formConfig || currentStageConfig.formConfig;
+
+        if (formConfig) {
+            for (const field of formConfig) {
                 if (field.required && (args.data[field.id] === undefined || args.data[field.id] === "")) {
                     throw new Error(`Field ${field.label} is required.`);
                 }
@@ -116,8 +137,8 @@ export const submitStage = mutation({
         };
 
         // 4. Calculate Next Stage
-        const currentIndex = cohort.pipeline.findIndex(p => p.id === args.stageId);
-        const nextStage = cohort.pipeline[currentIndex + 1];
+        const currentIndex = pipeline.findIndex(p => p._id === currentStageConfig._id || p.id === currentStageConfig.id);
+        const nextStage = pipeline[currentIndex + 1];
 
         const updates: any = {
             stageData: newStageData,
@@ -125,14 +146,10 @@ export const submitStage = mutation({
         };
 
         if (nextStage) {
-            updates.currentStageId = nextStage.id;
+            // Use _id for new stages, id for legacy
+            updates.currentStageId = nextStage._id || nextStage.id;
         } else {
-            // End of pipeline? Maybe mark as completed?
-            // "completed" type stage is usually the last one, so we stay there?
-            // If current stage is 'completed', we shouldn't be submitting.
-            if (currentStageConfig.type !== 'completed') {
-                // If no next stage, maybe we are done?
-            }
+            // End of pipeline
         }
 
         await ctx.db.patch(application._id, updates);
@@ -144,12 +161,11 @@ export const submitStage = mutation({
  */
 export const updateStage = mutation({
     args: {
-        token: v.string(),
         applicationId: v.id("applications"),
         stage: v.string(),
     },
     handler: async (ctx, args) => {
-        await ensureAdmin(ctx, args.token);
+        await ensureAdmin(ctx);
         await ctx.db.patch(args.applicationId, {
             currentStageId: args.stage,
             updatedAt: Date.now(),
@@ -162,12 +178,13 @@ export const updateStage = mutation({
  */
 export const updateApplicationData = mutation({
     args: {
-        token: v.string(),
         applicationId: v.id("applications"),
         stageData: v.optional(v.any()),
     },
     handler: async (ctx, args) => {
-        const user = await authenticate(ctx, args.token);
+        const user = await getViewer(ctx);
+        if (!user) throw new Error("Unauthorized");
+
         const app = await ctx.db.get(args.applicationId);
         if (!app) throw new Error("Not found");
 
