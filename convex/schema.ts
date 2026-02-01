@@ -21,8 +21,7 @@ export default defineSchema({
             // Flexible array for multiple hats
             positions: v.array(v.object({
                 title: v.optional(v.string()),
-                departmentId: v.optional(v.id("departments")), // Now references real department
-                department: v.optional(v.string()), // Legacy fallback
+                departmentId: v.optional(v.id("departments")),
                 isPrimary: v.boolean(),
                 startDate: v.optional(v.number()),
                 endDate: v.optional(v.number()),
@@ -42,6 +41,10 @@ export default defineSchema({
             customFields: v.optional(v.any()), // e.g. { bankName: "...", emergencyContact: "..." }
         })),
 
+        // Soft Delete
+        isDeleted: v.optional(v.boolean()),
+        deletedAt: v.optional(v.number()),
+
         // Notification preferences
         notificationPreferences: v.optional(v.object({
             email: v.object({
@@ -50,9 +53,6 @@ export default defineSchema({
             }),
             inApp: v.boolean(),
         })),
-
-        // Legacy (to be removed after migration)
-        linkedCohortIds: v.optional(v.array(v.id("programs"))),
     })
         .index("by_email", ["email"])
         .index("by_tokenIdentifier", ["tokenIdentifier"])
@@ -70,6 +70,10 @@ export default defineSchema({
         parentDepartmentId: v.optional(v.id("departments")), // For nested structures
         isActive: v.boolean(),
         order: v.optional(v.number()), // Display ordering
+
+        // Soft Delete
+        isDeleted: v.optional(v.boolean()),
+        deletedAt: v.optional(v.number()),
     })
         .index("by_slug", ["slug"])
         .index("by_parent", ["parentDepartmentId"])
@@ -94,6 +98,33 @@ export default defineSchema({
         .index("by_created", ["createdAt"]),
 
     // ============================================
+    // RATE LIMITING
+    // ============================================
+
+    rate_limits: defineTable({
+        userId: v.id("users"),
+        action: v.string(),      // "process.create", "notification.create", "event.create"
+        count: v.number(),       // Number of actions in current window
+        windowStart: v.number(), // Timestamp when window started
+    })
+        .index("by_user_action", ["userId", "action"]),
+
+    // ============================================
+    // GDPR / DELETION REQUESTS
+    // ============================================
+
+    deletion_requests: defineTable({
+        userId: v.id("users"),
+        status: v.string(),      // "pending", "approved", "rejected", "completed"
+        requestedAt: v.number(),
+        processedAt: v.optional(v.number()),
+        processedBy: v.optional(v.id("users")),
+        reason: v.optional(v.string()),
+    })
+        .index("by_user", ["userId"])
+        .index("by_status", ["status"]),
+
+    // ============================================
     // NOTIFICATIONS
     // ============================================
 
@@ -107,6 +138,9 @@ export default defineSchema({
         relatedEntityId: v.optional(v.string()),
         isRead: v.boolean(),
         createdAt: v.number(),
+        // Soft delete
+        isDeleted: v.optional(v.boolean()),
+        deletedAt: v.optional(v.number()),
     })
         .index("by_user", ["userId"])
         .index("by_unread", ["userId", "isRead"])
@@ -166,6 +200,9 @@ export default defineSchema({
             action: v.string(),
         }))),
         assignees: v.optional(v.array(v.string())),
+        // Soft Delete
+        isDeleted: v.optional(v.boolean()),
+        deletedAt: v.optional(v.number()),
     }),
 
     stages: defineTable({
@@ -182,20 +219,27 @@ export default defineSchema({
         assignees: v.optional(v.array(v.string())),
         sourceTemplateId: v.optional(v.id("stage_templates")),
         originalStageId: v.optional(v.string()), // For migration tracking (the old string ID)
+        // Soft Delete
+        isDeleted: v.optional(v.boolean()),
+        deletedAt: v.optional(v.number()),
     }).index("by_program", ["programId"]), // Renamed index
 
-    programs: defineTable({ // Renamed from cohorts
-        name: v.string(), // e.g., "Batch 2026"
+    programs: defineTable({
+        name: v.string(), // e.g., "Batch 2026", "Q1 Performance Review"
         slug: v.string(), // e.g., "batch-2026"
+
+        // Program classification
+        programType: v.optional(v.string()), // "recruitment_cycle", "survey_campaign", etc.
+
         isActive: v.boolean(),
         startDate: v.number(),
         endDate: v.optional(v.number()),
 
-        // Who can apply?
-        openPositions: v.optional(v.array(v.object({
-            committee: v.string(), // e.g. "Marketing"
-            roles: v.array(v.string()) // e.g. ["Graphic Designer", "Video Editor"]
-        }))),
+        // Type-specific configuration (flexible based on programType)
+        // For recruitment: { openPositions: [...] }
+        // For surveys: { targetAudience: "all_members" }
+        // For performance: { reviewPeriod: "Q1 2026" }
+        config: v.optional(v.any()),
 
         stageIds: v.optional(v.array(v.id("stages"))), // Ordered list of stages
 
@@ -209,7 +253,10 @@ export default defineSchema({
             }))
         }))),
 
-    }).index("by_slug", ["slug"]).index("by_active", ["isActive"]),
+    })
+        .index("by_slug", ["slug"])
+        .index("by_active", ["isActive"])
+        .index("by_type", ["programType"]),
 
     processes: defineTable({
         userId: v.id("users"),
@@ -226,6 +273,9 @@ export default defineSchema({
         data: v.optional(v.any()), // { [stageId]: { ... } }
 
         updatedAt: v.number(),
+        // Soft delete
+        isDeleted: v.optional(v.boolean()),
+        deletedAt: v.optional(v.number()),
     }).index("by_user", ["userId"]).index("by_type", ["type"]),
 
     reviews: defineTable({
@@ -250,6 +300,9 @@ export default defineSchema({
         attendees: v.array(v.id("users")), // Users who booked
         status: v.string(), // "open", "full", "cancelled"
         type: v.optional(v.string()), // "interview", "meeting"
+        // Soft delete
+        isDeleted: v.optional(v.boolean()),
+        deletedAt: v.optional(v.number()),
     })
         .index("by_block", ["blockId"])
         .index("by_start_time", ["startTime"]),
@@ -261,5 +314,9 @@ export default defineSchema({
         type: v.optional(v.string()), // MIME type
         processId: v.optional(v.id("processes")), // Replaces applicationId
         createdAt: v.number(),
+        // Soft delete
+        isDeleted: v.optional(v.boolean()),
+        deletedAt: v.optional(v.number()),
     }).index("by_storageId", ["storageId"]).index("by_user", ["userId"]),
 });
+

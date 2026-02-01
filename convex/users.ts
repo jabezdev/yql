@@ -69,13 +69,18 @@ export const storeUser = mutation({
     },
 });
 
-export const createReviewer = mutation({
+/**
+ * Creates a staff member with elevated access.
+ * More generic than the old "createReviewer" - can be used for any staff role.
+ */
+export const createStaffMember = mutation({
     args: {
         email: v.string(),
         name: v.string(),
         title: v.optional(v.string()),
-        department: v.optional(v.string()),
-        assignToProgramId: v.optional(v.id("programs")),
+        departmentId: v.optional(v.id("departments")),
+        clearanceLevel: v.optional(v.number()), // Default 3 (Officer)
+        systemRole: v.optional(v.string()), // Default "member"
     },
     handler: async (ctx, args) => {
         await ensureAdmin(ctx);
@@ -89,17 +94,25 @@ export const createReviewer = mutation({
             throw new Error("User already exists");
         }
 
+        if (args.departmentId) {
+            const department = await ctx.db.get(args.departmentId);
+            if (!department) throw new Error("Invalid departmentId");
+        }
+
         const userId = await ctx.db.insert("users", {
             email: args.email,
             name: args.name,
-            systemRole: "member", // Default to member with high clearance
-            clearanceLevel: 3,
+            systemRole: args.systemRole || "member",
+            clearanceLevel: args.clearanceLevel ?? 3, // Default officer level
             profile: {
-                positions: args.title ? [{ title: args.title, department: args.department, isPrimary: true }] : [],
+                positions: args.title ? [{
+                    title: args.title,
+                    departmentId: args.departmentId,
+                    isPrimary: true
+                }] : [],
                 status: "active",
                 joinDate: Date.now(),
             },
-            linkedCohortIds: args.assignToProgramId ? [args.assignToProgramId] : [],
         });
 
         // Audit Log
@@ -109,30 +122,36 @@ export const createReviewer = mutation({
             action: "user.create",
             entityType: "users",
             entityId: userId,
-            metadata: { method: "manual_creation", type: "reviewer" }
+            metadata: { method: "manual_creation", type: "staff_member" }
         });
 
         return userId;
     },
 });
 
-export const getReviewers = query({
-    args: { programId: v.optional(v.id("programs")) },
+/**
+ * Gets staff members with officer-level access (clearanceLevel >= 3).
+ * Can filter by department for scoped access.
+ */
+export const getStaffMembers = query({
+    args: { departmentId: v.optional(v.id("departments")) },
     handler: async (ctx, args) => {
         await ensureAdmin(ctx);
-        // "reviewer" role is gone. Users with clearanceLevel >= 3 are reviewers/officers.
-        const reviewers = await ctx.db.query("users")
-            .withIndex("by_system_role", q => q.eq("systemRole", "member")) // Approximation
-            .filter(q => q.gte(q.field("clearanceLevel"), 3))
-            .collect();
 
-        if (args.programId) {
-            return reviewers.filter(r => {
-                if (!r.linkedCohortIds || r.linkedCohortIds.length === 0) return true;
-                return r.linkedCohortIds.includes(args.programId!);
+        // Get all users with clearanceLevel >= 3 (officers and above)
+        const allUsers = await ctx.db.query("users").collect();
+        const staffMembers = allUsers.filter(u => (u.clearanceLevel ?? 0) >= 3 && !u.isDeleted);
+
+        if (args.departmentId) {
+            // Filter by department membership
+            return staffMembers.filter(u => {
+                if (!u.profile?.positions) return false;
+                return u.profile.positions.some(
+                    p => p.departmentId === args.departmentId
+                );
             });
         }
-        return reviewers;
+        return staffMembers;
     }
 });
 
@@ -145,7 +164,9 @@ export const getUser = query({
         if (requestor._id === args.id) return requestor;
 
         if ((requestor.clearanceLevel ?? 0) >= 3 || requestor.systemRole === "admin") {
-            return await ctx.db.get(args.id);
+            const user = await ctx.db.get(args.id);
+            if (!user || user.isDeleted) return null;
+            return user;
         }
 
         throw new Error("Unauthorized access to user data");
@@ -159,56 +180,19 @@ export const getMe = query({
     },
 });
 
-export const seedAdmin = mutation({
-    args: {
-        email: v.string(),
-        name: v.string(),
-    },
-    handler: async (ctx, args) => {
-        const existingAdmin = await ctx.db
-            .query("users")
-            .withIndex("by_system_role", (q) => q.eq("systemRole", "admin"))
-            .first();
 
-        if (existingAdmin) {
-            if (existingAdmin.email === args.email) {
-                return existingAdmin._id;
-            }
-            throw new Error("Admin user already exists. Cannot seed.");
-        }
 
-        const userId = await ctx.db.insert("users", {
-            email: args.email,
-            name: args.name,
-            systemRole: "admin",
-            clearanceLevel: 5,
-            profile: {
-                positions: [{ title: "System Administrator", isPrimary: true }],
-                status: "active",
-                joinDate: Date.now(),
-            },
-            linkedCohortIds: [],
-        });
-
-        // Audit Log
-        await createAuditLog(ctx, {
-            userId: userId,
-            action: "user.create",
-            entityType: "users",
-            entityId: userId,
-            metadata: { method: "seed_admin" }
-        });
-
-        return userId;
-    },
-});
-
+/**
+ * Onboards a user to a specific program/process.
+ * Creates user if they don't exist, and creates or updates their process.
+ */
 export const onboardUser = mutation({
     args: {
         email: v.string(),
         name: v.string(),
         targetStageId: v.id("stages"),
-        programId: v.id("programs")
+        programId: v.id("programs"),
+        type: v.optional(v.string()), // Process type, defaults to context-appropriate type
     },
     handler: async (ctx, args) => {
         await ensureAdmin(ctx);
@@ -229,7 +213,7 @@ export const onboardUser = mutation({
 
             // Audit Log
             await createAuditLog(ctx, {
-                userId: userId, // New user
+                userId: userId,
                 action: "user.create",
                 entityType: "users",
                 entityId: userId,
@@ -243,6 +227,9 @@ export const onboardUser = mutation({
             .filter(q => q.eq(q.field("programId"), args.programId))
             .first();
 
+        // Determine process type
+        const processType = args.type || "onboarding"; // Generic default instead of "recruitment"
+
         if (existingProcess) {
             await ctx.db.patch(existingProcess._id, {
                 currentStageId: args.targetStageId,
@@ -252,7 +239,7 @@ export const onboardUser = mutation({
             await ctx.db.insert("processes", {
                 userId,
                 programId: args.programId,
-                type: "recruitment", // Default
+                type: processType,
                 currentStageId: args.targetStageId,
                 status: "in_progress",
                 updatedAt: Date.now(),
@@ -263,3 +250,4 @@ export const onboardUser = mutation({
         return userId;
     }
 });
+

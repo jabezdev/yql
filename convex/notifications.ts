@@ -1,8 +1,10 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { getViewer, ensureAdmin } from "./auth";
 import { api, internal } from "./_generated/api";
+import { requireRateLimit } from "./lib/rateLimit";
 
 // ============================================
 // NOTIFICATION TYPES
@@ -60,7 +62,8 @@ export const getMyNotifications = query({
         }
 
         const notifications = await q.order("desc").take(args.limit ?? 20);
-        return notifications;
+        // Filter out soft-deleted
+        return notifications.filter(n => !n.isDeleted);
     },
 });
 
@@ -107,6 +110,9 @@ export const createNotification = mutation({
         if (!requestor || (requestor.clearanceLevel ?? 0) < 3) {
             throw new Error("Unauthorized");
         }
+
+        // Rate limiting check
+        await requireRateLimit(ctx, requestor._id, "notification.create");
 
         const notificationId = await ctx.db.insert("notifications", {
             ...args,
@@ -237,17 +243,22 @@ export const deleteNotification = mutation({
 
         const notification = await ctx.db.get(args.notificationId);
         if (!notification) return;
+        if (notification.isDeleted) return; // Already deleted
 
         if (notification.userId !== user._id) {
             throw new Error("Unauthorized");
         }
 
-        await ctx.db.delete(args.notificationId);
+        // Soft delete
+        await ctx.db.patch(args.notificationId, {
+            isDeleted: true,
+            deletedAt: Date.now(),
+        });
     },
 });
 
 /**
- * Clear old notifications (cleanup job)
+ * Clear old notifications (cleanup job) - marks as deleted
  */
 export const cleanupOldNotifications = internalMutation({
     args: { olderThanDays: v.optional(v.number()) },
@@ -257,11 +268,17 @@ export const cleanupOldNotifications = internalMutation({
 
         const oldNotifications = await ctx.db
             .query("notifications")
-            .filter((q) => q.lt(q.field("createdAt"), cutoff))
+            .filter((q) => q.and(
+                q.lt(q.field("createdAt"), cutoff),
+                q.neq(q.field("isDeleted"), true)
+            ))
             .collect();
 
         for (const n of oldNotifications) {
-            await ctx.db.delete(n._id);
+            await ctx.db.patch(n._id, {
+                isDeleted: true,
+                deletedAt: Date.now(),
+            });
         }
 
         return { deleted: oldNotifications.length };
@@ -276,7 +293,7 @@ export const cleanupOldNotifications = internalMutation({
  * Helper to notify user about process updates
  */
 export async function notifyProcessUpdate(
-    ctx: any,
+    ctx: MutationCtx,
     userId: Id<"users">,
     processId: Id<"processes">,
     title: string,
@@ -299,7 +316,7 @@ export async function notifyProcessUpdate(
  * Helper to notify user about status changes
  */
 export async function notifyStatusChange(
-    ctx: any,
+    ctx: MutationCtx,
     userId: Id<"users">,
     oldStatus: string,
     newStatus: string,
@@ -317,3 +334,4 @@ export async function notifyStatusChange(
         createdAt: Date.now(),
     });
 }
+

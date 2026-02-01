@@ -1,6 +1,8 @@
 import { mutation } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import { api } from "./_generated/api";
 import { DEFAULT_ROLES } from "./roles";
+import { Id } from "./_generated/dataModel";
 
 // ============================================
 // DEFAULT DEPARTMENTS
@@ -48,12 +50,12 @@ export const seedAll = mutation({
 /**
  * Seed roles from DEFAULT_ROLES
  */
-async function seedRoles(ctx: any) {
+async function seedRoles(ctx: MutationCtx) {
     console.log("Seeding roles...");
     for (const roleDef of DEFAULT_ROLES) {
         const existing = await ctx.db
             .query("roles")
-            .withIndex("by_slug", (q: any) => q.eq("slug", roleDef.slug))
+            .withIndex("by_slug", (q) => q.eq("slug", roleDef.slug))
             .first();
 
         if (existing) {
@@ -76,12 +78,12 @@ async function seedRoles(ctx: any) {
 /**
  * Seed departments from DEFAULT_DEPARTMENTS
  */
-async function seedDepartments(ctx: any) {
+async function seedDepartments(ctx: MutationCtx) {
     console.log("Seeding departments...");
     for (const dept of DEFAULT_DEPARTMENTS) {
         const existing = await ctx.db
             .query("departments")
-            .withIndex("by_slug", (q: any) => q.eq("slug", dept.slug))
+            .withIndex("by_slug", (q) => q.eq("slug", dept.slug))
             .first();
 
         if (existing) {
@@ -103,12 +105,12 @@ async function seedDepartments(ctx: any) {
 /**
  * Seed a default program
  */
-async function seedProgram(ctx: any) {
+async function seedProgram(ctx: MutationCtx) {
     console.log("Seeding program...");
     let programId;
     const existingProgram = await ctx.db
         .query("programs")
-        .withIndex("by_slug", (q: any) => q.eq("slug", "batch-2026"))
+        .withIndex("by_slug", (q) => q.eq("slug", "batch-2026"))
         .first();
 
     if (existingProgram) {
@@ -128,7 +130,7 @@ async function seedProgram(ctx: any) {
     return programId;
 }
 
-async function seedDashboards(ctx: any) {
+async function seedDashboards(ctx: MutationCtx) {
     // --- Blocks ---
 
     // Guest: Welcome Banner
@@ -190,13 +192,13 @@ async function seedDashboards(ctx: any) {
     console.log("Dashboards seeded.");
 }
 
-async function createOrGetBlock(ctx: any, type: string, name: string, config: any) {
+async function createOrGetBlock(ctx: MutationCtx, type: string, name: string, config: Record<string, unknown>): Promise<Id<"block_instances">> {
     // Ideally we check by name to avoid dupes, but block_instances doesn't have a unique index on name.
     // We can scan or just insert. For a seed script, checking is safer.
     // Since we don't have an index on name, we might accumulate blocks if we aren't careful.
     // For this prototype, we'll try to find one with the same name.
     const existing = await ctx.db.query("block_instances")
-        .filter((q: any) => q.eq(q.field("name"), name))
+        .filter((q) => q.eq(q.field("name"), name))
         .first();
 
     if (existing) {
@@ -212,9 +214,9 @@ async function createOrGetBlock(ctx: any, type: string, name: string, config: an
     });
 }
 
-async function createOrUpdateDashboard(ctx: any, slug: string, name: string, layout: any[]) {
+async function createOrUpdateDashboard(ctx: MutationCtx, slug: string, name: string, layout: Array<{ blockId: Id<"block_instances">; width: number }>): Promise<Id<"dashboards">> {
     const existing = await ctx.db.query("dashboards")
-        .withIndex("by_slug", (q: any) => q.eq("slug", slug))
+        .withIndex("by_slug", (q) => q.eq("slug", slug))
         .first();
 
     if (existing) {
@@ -231,4 +233,5 @@ async function createOrUpdateDashboard(ctx: any, slug: string, name: string, lay
         layout
     });
 }
+
 

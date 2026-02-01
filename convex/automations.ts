@@ -1,4 +1,5 @@
 import { internalMutation } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
@@ -23,7 +24,7 @@ export const evaluate = internalMutation({
 
         // Filter for matching triggers
         const pertinentAutomations = program.automations.filter(
-            (a: any) => a.trigger === args.trigger
+            (a: { trigger: string }) => a.trigger === args.trigger
         );
 
         for (const automation of pertinentAutomations) {
@@ -39,8 +40,9 @@ export const evaluate = internalMutation({
     },
 });
 
-function checkConditions(conditions: Record<string, unknown> | undefined, context: any): boolean {
+function checkConditions(conditions: Record<string, unknown> | undefined, context: Record<string, unknown> | undefined): boolean {
     if (!conditions) return true;
+    if (!context) return false;
 
     // Simple equality check for now
     for (const [key, value] of Object.entries(conditions)) {
@@ -52,7 +54,20 @@ function checkConditions(conditions: Record<string, unknown> | undefined, contex
     return true;
 }
 
-async function executeAction(ctx: any, action: any, context: { userId: Id<"users">, data?: any }) {
+interface AutomationAction {
+    type: string;
+    payload: {
+        subject?: string;
+        template?: string;
+        variables?: Record<string, unknown>;
+        systemRole?: string;
+        clearanceLevel?: number;
+        status?: string;
+        [key: string]: unknown;
+    };
+}
+
+async function executeAction(ctx: MutationCtx, action: AutomationAction, context: { userId: Id<"users">; data?: Record<string, unknown> }) {
     const user = await ctx.db.get(context.userId);
     if (!user) return;
 
@@ -61,11 +76,11 @@ async function executeAction(ctx: any, action: any, context: { userId: Id<"users
             await ctx.scheduler.runAfter(0, api.emails.sendEmail, {
                 to: user.email,
                 subject: action.payload.subject || "Notification",
-                template: action.payload.template,
+                template: action.payload.template || "default",
                 payload: {
                     name: user.name,
-                    ...context.data, // Pass generic data to template
-                    ...action.payload.variables // Hardcoded variables
+                    ...(context.data || {}),
+                    ...(action.payload.variables || {})
                 }
             });
             break;
@@ -80,11 +95,11 @@ async function executeAction(ctx: any, action: any, context: { userId: Id<"users
 
         case "update_status": {
             // e.g. payload: { status: "active" }
-            const currentProfile = user.profile || { positions: [], status: "candidate" } as any;
+            const currentProfile = user.profile || { positions: [], status: "candidate" };
             await ctx.db.patch(user._id, {
                 profile: {
                     ...currentProfile,
-                    status: action.payload.status
+                    status: action.payload.status || currentProfile.status
                 }
             });
             break;
@@ -94,3 +109,4 @@ async function executeAction(ctx: any, action: any, context: { userId: Id<"users
             console.warn(`Unknown automation action type: ${action.type}`);
     }
 }
+

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 
 // =====================================
 // UPLOAD LIMITS (Security)
@@ -9,7 +10,7 @@ export const MAX_VIDEO_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB for videos
 export const MAX_UPLOADS_PER_DAY = 20;
 
 // Helper: Get user's upload count for today
-async function getUserDailyUploadCount(ctx: any, userId: string): Promise<number> {
+async function getUserDailyUploadCount(ctx: QueryCtx | MutationCtx, userId: string): Promise<number> {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
     const startTimestamp = startOfDay.getTime();
@@ -137,7 +138,9 @@ export const getFileUrl = query({
             .first();
 
         // 2. Security Check
-        const isOwner = file && file.userId === user._id;
+        if (!file || file.isDeleted) return null;
+
+        const isOwner = file.userId === user._id;
         const isAdminOrReviewer = (user.clearanceLevel ?? 0) >= 3;
 
         // If file metadata is missing (legacy uploads?), fallback to strict admin check or just allow if we want to be loose for legacy.
@@ -176,7 +179,7 @@ export const getFileMetadata = query({
             .withIndex("by_storageId", (q) => q.eq("storageId", args.storageId))
             .first();
 
-        if (!file) return null;
+        if (!file || file.isDeleted) return null;
 
         const isOwner = file.userId === user._id;
         const isAdminOrReviewer = (user.clearanceLevel ?? 0) >= 3;
@@ -185,6 +188,41 @@ export const getFileMetadata = query({
 
         const url = await ctx.storage.getUrl(args.storageId);
         return { ...file, url };
+    }
+});
+
+/**
+ * Soft delete a file (Owner or Admin only)
+ */
+export const deleteFile = mutation({
+    args: { storageId: v.string() },
+    handler: async (ctx, args) => {
+        const identity = await ctx.auth.getUserIdentity();
+        if (!identity) throw new Error("Unauthorized");
+
+        const user = await ctx.db
+            .query("users")
+            .withIndex("by_tokenIdentifier", (q) => q.eq("tokenIdentifier", identity.tokenIdentifier))
+            .first();
+
+        if (!user) throw new Error("User not found");
+
+        const file = await ctx.db
+            .query("files")
+            .withIndex("by_storageId", (q) => q.eq("storageId", args.storageId))
+            .first();
+
+        if (!file || file.isDeleted) throw new Error("File not found");
+
+        const isOwner = file.userId === user._id;
+        const isAdmin = (user.clearanceLevel ?? 0) >= 4;
+
+        if (!isOwner && !isAdmin) throw new Error("Unauthorized to delete this file");
+
+        await ctx.db.patch(file._id, {
+            isDeleted: true,
+            deletedAt: Date.now()
+        });
     }
 });
 

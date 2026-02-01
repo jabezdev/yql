@@ -13,10 +13,12 @@ export const sendEmail = action({
     },
     handler: async (ctx, args) => {
         console.log("------------------------------------------");
-        console.log(`[EMAIL DISPATCH] To: ${args.to}`);
+        // Masking PII for logs
+        const maskedTo = args.to.replace(/(^.{1})[^@]*@/, '$1***@');
+        console.log(`[EMAIL DISPATCH] To: ${maskedTo}`);
         console.log(`[EMAIL DISPATCH] Subject: ${args.subject}`);
         console.log(`[EMAIL DISPATCH] Template: ${args.template}`);
-        console.log(`[EMAIL DISPATCH] Payload:`, args.payload);
+        console.log(`[EMAIL DISPATCH] Payload: [REDACTED]`); // Don't log full payload in production
         console.log("------------------------------------------");
 
         // TODO: Replace with actual Resend SDK call

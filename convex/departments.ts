@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { ensureAdmin, getViewer } from "./auth";
+import { createAuditLog } from "./auditLog";
 
 // ============================================
 // QUERIES
@@ -25,7 +26,8 @@ export const getAllDepartments = query({
                 .collect();
         }
 
-        return departments.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+        // Filter out soft-deleted
+        return departments.filter(d => !d.isDeleted).sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
     },
 });
 
@@ -35,7 +37,9 @@ export const getAllDepartments = query({
 export const getDepartment = query({
     args: { departmentId: v.id("departments") },
     handler: async (ctx, args) => {
-        return await ctx.db.get(args.departmentId);
+        const dept = await ctx.db.get(args.departmentId);
+        if (!dept || dept.isDeleted) return null;
+        return dept;
     },
 });
 
@@ -45,10 +49,13 @@ export const getDepartment = query({
 export const getDepartmentBySlug = query({
     args: { slug: v.string() },
     handler: async (ctx, args) => {
-        return await ctx.db
+        const dept = await ctx.db
             .query("departments")
             .withIndex("by_slug", (q) => q.eq("slug", args.slug))
             .first();
+
+        if (!dept || dept.isDeleted) return null;
+        return dept;
     },
 });
 
@@ -59,9 +66,11 @@ export const getChildDepartments = query({
     args: { parentId: v.optional(v.id("departments")) },
     handler: async (ctx, args) => {
         return await ctx.db
+        const depts = await ctx.db
             .query("departments")
             .withIndex("by_parent", (q) => q.eq("parentDepartmentId", args.parentId))
             .collect();
+        return depts.filter(d => !d.isDeleted);
     },
 });
 
@@ -122,14 +131,13 @@ export const createDepartment = mutation({
             isActive: true,
         });
 
-        // Log the action
-        await ctx.db.insert("audit_logs", {
+        // Audit Log
+        await createAuditLog(ctx, {
             userId: admin._id,
             action: "department.create",
             entityType: "departments",
             entityId: departmentId,
             changes: { after: args },
-            createdAt: Date.now(),
         });
 
         return departmentId;
@@ -179,14 +187,13 @@ export const updateDepartment = mutation({
 
         await ctx.db.patch(departmentId, updates);
 
-        // Log the action
-        await ctx.db.insert("audit_logs", {
+        // Audit Log
+        await createAuditLog(ctx, {
             userId: admin._id,
             action: "department.update",
             entityType: "departments",
             entityId: departmentId,
             changes: { before, after: updates },
-            createdAt: Date.now(),
         });
     },
 });
@@ -217,16 +224,19 @@ export const deleteDepartment = mutation({
         }
 
         // Soft delete
-        await ctx.db.patch(args.departmentId, { isActive: false });
+        await ctx.db.patch(args.departmentId, {
+            isActive: false,
+            isDeleted: true,
+            deletedAt: Date.now()
+        });
 
-        // Log the action
-        await ctx.db.insert("audit_logs", {
+        // Audit Log
+        await createAuditLog(ctx, {
             userId: admin._id,
             action: "department.delete",
             entityType: "departments",
             entityId: args.departmentId,
             changes: { before: department },
-            createdAt: Date.now(),
         });
     },
 });

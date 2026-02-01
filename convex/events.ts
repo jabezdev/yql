@@ -1,6 +1,9 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { api } from "./_generated/api";
+import { getViewer, ensureAdmin, ensureReviewer } from "./auth";
+import { createAuditLog } from "./auditLog";
+import { requireRateLimit } from "./lib/rateLimit";
 
 // --- Queries ---
 
@@ -12,7 +15,10 @@ export const getEventsForBlock = query({
             .withIndex("by_block", (q) => q.eq("blockId", args.blockId))
             .collect();
 
-        return events.sort((a, b) => a.startTime - b.startTime);
+        // Filter out soft-deleted events
+        return events
+            .filter(e => !e.isDeleted)
+            .sort((a, b) => a.startTime - b.startTime);
     },
 });
 
@@ -33,8 +39,8 @@ export const getMyBookings = query({
             .withIndex("by_block", (q) => q.eq("blockId", args.blockId))
             .collect();
 
-        // Check if user is in attendees
-        return events.filter(s => s.attendees.includes(user._id));
+        // Filter out soft-deleted and check if user is in attendees
+        return events.filter(s => !s.isDeleted && s.attendees.includes(user._id));
     },
 });
 
@@ -51,18 +57,20 @@ export const createEvents = mutation({
         type: v.optional(v.string())
     },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Unauthorized");
+        const user = await getViewer(ctx);
+        if (!user) throw new Error("Unauthorized");
 
-        const user = await ctx.db
-            .query("users")
-            .withIndex("by_tokenIdentifier", (q) => q.eq("tokenIdentifier", identity.tokenIdentifier))
-            .unique();
+        // Rate limiting check
+        await requireRateLimit(ctx, user._id, "event.create");
 
-        if (!user || (user.clearanceLevel ?? 0) < 1) throw new Error("Unauthorized");
+        // Require at least probation level (clearance 1) to create events
+        if ((user.clearanceLevel ?? 0) < 1) {
+            throw new Error("Unauthorized: Insufficient access level to create events");
+        }
 
+        const createdEventIds = [];
         for (const slot of args.slots) {
-            await ctx.db.insert("events", {
+            const eventId = await ctx.db.insert("events", {
                 blockId: args.blockId,
                 hostId: user._id,
                 startTime: slot.startTime,
@@ -70,41 +78,76 @@ export const createEvents = mutation({
                 maxAttendees: slot.maxAttendees,
                 attendees: [],
                 status: "open",
-                type: args.type || "interview" // Default to interview for compatibility
+                type: args.type || "meeting" // Generic default
             });
+            createdEventIds.push(eventId);
         }
+
+        // Audit Log
+        await createAuditLog(ctx, {
+            userId: user._id,
+            action: "event.create",
+            entityType: "events",
+            entityId: createdEventIds[0], // Log first event, metadata has count
+            metadata: {
+                blockId: args.blockId,
+                eventCount: args.slots.length,
+                type: args.type || "meeting"
+            }
+        });
+
+        return createdEventIds;
     },
 });
 
 export const deleteEvent = mutation({
     args: { eventId: v.id("events") },
     handler: async (ctx, args) => {
+        const user = await getViewer(ctx);
+        if (!user) throw new Error("Unauthorized");
+
         const event = await ctx.db.get(args.eventId);
-        if (!event) return;
-        await ctx.db.delete(args.eventId);
+        if (!event) throw new Error("Event not found");
+        if (event.isDeleted) throw new Error("Event already deleted");
+
+        // Only host or admin can delete
+        const isHost = event.hostId === user._id;
+        const isAdmin = (user.clearanceLevel ?? 0) >= 4;
+
+        if (!isHost && !isAdmin) {
+            throw new Error("Unauthorized: Only the host or an admin can delete this event");
+        }
+
+        // Soft delete
+        await ctx.db.patch(args.eventId, {
+            isDeleted: true,
+            deletedAt: Date.now(),
+        });
+
+        // Audit Log
+        await createAuditLog(ctx, {
+            userId: user._id,
+            action: "event.delete",
+            entityType: "events",
+            entityId: args.eventId,
+            changes: { before: event }
+        });
     },
 });
 
 export const bookEvent = mutation({
     args: { eventId: v.id("events") },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Unauthorized");
-
-        const user = await ctx.db
-            .query("users")
-            .withIndex("by_tokenIdentifier", (q) => q.eq("tokenIdentifier", identity.tokenIdentifier))
-            .unique();
-
-        if (!user) throw new Error("User not found");
+        const user = await getViewer(ctx);
+        if (!user) throw new Error("Unauthorized");
 
         const event = await ctx.db.get(args.eventId);
-        if (!event) throw new Error("Event not found");
+        if (!event || event.isDeleted) throw new Error("Event not found or deleted");
 
         if (event.attendees.includes(user._id)) return; // Already booked
 
         if (event.attendees.length >= event.maxAttendees) {
-            throw new Error("Event provided is full");
+            throw new Error("Event is full");
         }
 
         const newAttendees = [...event.attendees, user._id];
@@ -113,6 +156,15 @@ export const bookEvent = mutation({
         await ctx.db.patch(args.eventId, {
             attendees: newAttendees,
             status: newStatus
+        });
+
+        // Audit Log
+        await createAuditLog(ctx, {
+            userId: user._id,
+            action: "event.book",
+            entityType: "events",
+            entityId: args.eventId,
+            metadata: { attendeeCount: newAttendees.length }
         });
 
         // Trigger Notification
@@ -133,24 +185,31 @@ export const bookEvent = mutation({
 export const cancelBooking = mutation({
     args: { eventId: v.id("events") },
     handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("Unauthorized");
-
-        const user = await ctx.db
-            .query("users")
-            .withIndex("by_tokenIdentifier", (q) => q.eq("tokenIdentifier", identity.tokenIdentifier))
-            .unique();
-
-        if (!user) throw new Error("User not found");
+        const user = await getViewer(ctx);
+        if (!user) throw new Error("Unauthorized");
 
         const event = await ctx.db.get(args.eventId);
-        if (!event) throw new Error("Event not found");
+        if (!event || event.isDeleted) throw new Error("Event not found or deleted");
+
+        // Check if user is actually a registered attendee
+        if (!event.attendees.includes(user._id)) {
+            throw new Error("You are not registered for this event");
+        }
 
         const newAttendees = event.attendees.filter(id => id !== user._id);
 
         await ctx.db.patch(args.eventId, {
             attendees: newAttendees,
             status: "open"
+        });
+
+        // Audit Log
+        await createAuditLog(ctx, {
+            userId: user._id,
+            action: "event.cancel",
+            entityType: "events",
+            entityId: args.eventId,
+            metadata: { attendeeCount: newAttendees.length }
         });
     },
 });

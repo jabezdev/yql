@@ -176,8 +176,11 @@ export const deleteStage = mutation({
             });
         }
 
-        // Delete the stage record
-        await ctx.db.delete(args.stageId);
+        // Soft Delete the stage record
+        await ctx.db.patch(args.stageId, {
+            isDeleted: true,
+            deletedAt: Date.now()
+        });
     },
 });
 
@@ -195,6 +198,6 @@ export const getProgramStages = query({
         }
 
         const stages = await Promise.all(program.stageIds.map(id => ctx.db.get(id)));
-        return stages.filter(s => s !== null);
+        return stages.filter(s => s !== null && !s.isDeleted);
     },
 });

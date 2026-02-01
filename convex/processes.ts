@@ -4,6 +4,9 @@ import { internal } from "./_generated/api";
 import { Doc } from "./_generated/dataModel";
 import { getViewer } from "./auth";
 import { createAuditLog } from "./auditLog";
+import { isOwnerOrAdmin } from "./lib/authorize";
+import { isValidProcessType, PROCESS_TYPES } from "./lib/constants";
+import { requireRateLimit } from "./lib/rateLimit";
 
 /**
  * Gets a single process.
@@ -21,7 +24,7 @@ export const getProcess = query({
         // If specific process ID requested
         if (args.processId) {
             const process = await ctx.db.get(args.processId);
-            if (!process) return null;
+            if (!process || process.isDeleted) return null;
             if (process.userId !== user._id && user.systemRole !== "admin") {
                 throw new Error("Unauthorized");
             }
@@ -41,16 +44,19 @@ export const getProcess = query({
 
         const processes = await q.collect();
 
+        // Filter out deleted
+        const activeProcesses = processes.filter(p => !p.isDeleted);
+
         if (args.type) {
-            return processes.find(p => p.type === args.type) || null;
+            return activeProcesses.find(p => p.type === args.type) || null;
         }
 
-        return processes.sort((a, b) => b.updatedAt - a.updatedAt)[0] || null;
+        return activeProcesses.sort((a, b) => b.updatedAt - a.updatedAt)[0] || null;
     },
 });
 
 /**
- * Gets all processes (Admin only).
+ * Gets all processes (Admin/Officer only).
  */
 export const getAllProcesses = query({
     args: {
@@ -58,15 +64,20 @@ export const getAllProcesses = query({
     },
     handler: async (ctx, args) => {
         const user = await getViewer(ctx);
-        if (!user || user.systemRole !== "admin") throw new Error("Unauthorized");
+        // Require at least officer level (clearanceLevel >= 3)
+        if (!user || (user.clearanceLevel ?? 0) < 3) {
+            throw new Error("Unauthorized: Requires officer-level access");
+        }
 
         if (args.type) {
-            return await ctx.db
+            const processes = await ctx.db
                 .query("processes")
                 .withIndex("by_type", q => q.eq("type", args.type!))
                 .collect();
+            return processes.filter(p => !p.isDeleted);
         }
-        return await ctx.db.query("processes").collect();
+        const allProcesses = await ctx.db.query("processes").collect();
+        return allProcesses.filter(p => !p.isDeleted);
     },
 });
 
@@ -80,18 +91,35 @@ export const updateStatus = mutation({
     },
     handler: async (ctx, args) => {
         const user = await getViewer(ctx);
-        if (!user || user.systemRole !== "admin") throw new Error("Unauthorized");
+        // Require admin level (clearanceLevel >= 4)
+        if (!user || (user.clearanceLevel ?? 0) < 4) {
+            throw new Error("Unauthorized: Requires admin-level access");
+        }
 
         const process = await ctx.db.get(args.processId);
         if (!process) throw new Error("Process not found");
+
+        const previousStatus = process.status;
 
         await ctx.db.patch(args.processId, {
             status: args.status,
             updatedAt: Date.now(),
         });
 
+        // Audit Log
+        await createAuditLog(ctx, {
+            userId: user._id,
+            action: "process.status_change",
+            entityType: "processes",
+            entityId: args.processId,
+            changes: {
+                before: { status: previousStatus },
+                after: { status: args.status }
+            }
+        });
+
         // Automations Hook: Status Change
-        const processData = await ctx.db.get(args.processId); // Re-fetch or use prev
+        const processData = await ctx.db.get(args.processId);
         if (processData && processData.programId) {
             await ctx.scheduler.runAfter(0, internal.automations.evaluate, {
                 trigger: "status_change",
@@ -159,11 +187,31 @@ export const submitStage = mutation({
         }
 
         // 2. Validate Data
+        // 2. Validate Data
         const formConfig = (currentStageConfig.config as any)?.formConfig || (currentStageConfig as any).formConfig;
-        if (formConfig) {
+        if (formConfig && Array.isArray(formConfig)) {
             for (const field of formConfig) {
-                if (field.required && (args.data[field.id] === undefined || args.data[field.id] === "")) {
-                    throw new Error(`Field ${field.label} is required.`);
+                const value = args.data[field.id];
+                const isPresent = value !== undefined && value !== null && value !== "";
+
+                // Check Required
+                if (field.required && !isPresent) {
+                    throw new Error(`Field '${field.label}' is required.`);
+                }
+
+                // Type Validation (if present)
+                if (isPresent) {
+                    if (field.type === "email") {
+                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                        if (typeof value !== "string" || !emailRegex.test(value)) {
+                            throw new Error(`Field '${field.label}' must be a valid email.`);
+                        }
+                    } else if (field.type === "number") {
+                        if (typeof value !== "number" && isNaN(Number(value))) {
+                            throw new Error(`Field '${field.label}' must be a number.`);
+                        }
+                    }
+                    // Add more type checks as needed
                 }
             }
         }
@@ -235,6 +283,9 @@ export const createProcess = mutation({
     handler: async (ctx, args) => {
         const user = await getViewer(ctx);
         if (!user) throw new Error("Unauthorized");
+
+        // Rate limiting check
+        await requireRateLimit(ctx, user._id, "process.create");
 
         // Role-Based Access Control via DB
         const systemRole = user.systemRole || "guest";

@@ -115,9 +115,7 @@ export const getStageBlocks = query({
                 .filter((q) => q.eq(q.field("programId"), stage.programId))
                 .first();
 
-            const isLinkedToProgram = user.linkedCohortIds?.includes(stage.programId); // Legacy fallback or generic link
-
-            if (!hasProcess && !isLinkedToProgram) {
+            if (!hasProcess) {
                 return [];
             }
         }
