@@ -37,8 +37,10 @@ export default defineSchema({
                 changedBy: v.optional(v.id("users")),
                 reason: v.optional(v.string()),
             }))),
-            // Generic HR Data
+            // Generic Talent Development Data
             customFields: v.optional(v.any()), // e.g. { bankName: "...", emergencyContact: "..." }
+            // Privacy Settings
+            privacyLevel: v.optional(v.string()), // "public", "members_only", "leads_only", "private"
         })),
 
         // Soft Delete
@@ -318,5 +320,81 @@ export default defineSchema({
         isDeleted: v.optional(v.boolean()),
         deletedAt: v.optional(v.number()),
     }).index("by_storageId", ["storageId"]).index("by_user", ["userId"]),
+
+    // ============================================
+    // MATRIX MANAGER RELATIONSHIPS
+    // ============================================
+
+    manager_assignments: defineTable({
+        userId: v.id("users"),           // The team member
+        managerId: v.id("users"),        // The manager
+        context: v.string(),             // "direct", "project", "dotted_line", "loa_approver"
+        departmentId: v.optional(v.id("departments")),
+        isPrimary: v.boolean(),          // Primary manager for this context
+        startDate: v.optional(v.number()),
+        endDate: v.optional(v.number()), // For temporary assignments
+        // Soft delete
+        isDeleted: v.optional(v.boolean()),
+        deletedAt: v.optional(v.number()),
+    })
+        .index("by_user", ["userId"])
+        .index("by_manager", ["managerId"])
+        .index("by_context", ["context"]),
+
+    // ============================================
+    // PERFORMANCE REVIEWS & TALENT DEVELOPMENT
+    // ============================================
+
+    review_cycles: defineTable({
+        name: v.string(),                 // "Q4 2026 Performance Review"
+        programId: v.optional(v.id("programs")),
+        startDate: v.number(),
+        endDate: v.number(),
+        status: v.string(),               // "draft", "active", "calibration", "completed"
+        selfReviewDeadline: v.optional(v.number()),
+        managerReviewDeadline: v.optional(v.number()),
+        peerReviewDeadline: v.optional(v.number()),
+        // Configuration
+        config: v.optional(v.object({
+            includeSelfReview: v.boolean(),
+            includePeerReview: v.boolean(),
+            includeManagerReview: v.boolean(),
+            peerReviewsPerPerson: v.optional(v.number()), // How many peers review each person
+        })),
+    })
+        .index("by_status", ["status"])
+        .index("by_program", ["programId"]),
+
+    peer_review_assignments: defineTable({
+        cycleId: v.id("review_cycles"),
+        reviewerId: v.id("users"),        // Who reviews (anonymous)
+        revieweeId: v.id("users"),        // Who is reviewed
+        isAnonymous: v.boolean(),         // Always true for peer reviews
+        status: v.string(),               // "pending", "in_progress", "submitted"
+        data: v.optional(v.any()),        // Review data (scored questions, comments)
+        submittedAt: v.optional(v.number()),
+    })
+        .index("by_cycle", ["cycleId"])
+        .index("by_reviewer", ["reviewerId"])
+        .index("by_reviewee", ["revieweeId"])
+        .index("by_status", ["status"]),
+
+    goals: defineTable({
+        userId: v.id("users"),
+        cycleId: v.optional(v.id("review_cycles")),
+        title: v.string(),
+        description: v.optional(v.string()),
+        status: v.string(),               // "in_progress", "completed", "cancelled"
+        progress: v.optional(v.number()), // 0-100
+        dueDate: v.optional(v.number()),
+        createdAt: v.number(),
+        updatedAt: v.number(),
+        // Soft delete
+        isDeleted: v.optional(v.boolean()),
+        deletedAt: v.optional(v.number()),
+    })
+        .index("by_user", ["userId"])
+        .index("by_cycle", ["cycleId"])
+        .index("by_status", ["status"]),
 });
 

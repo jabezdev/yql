@@ -251,3 +251,61 @@ export const onboardUser = mutation({
     }
 });
 
+/**
+ * Update own profile (Self-service)
+ * Allows updating contact info, privacy settings, and custom fields.
+ */
+export const updateProfile = mutation({
+    args: {
+        privacyLevel: v.optional(v.string()), // "public", "members_only", "leads_only", "private"
+        customFields: v.optional(v.any()), // Safe fields like emergency contact
+        notificationPreferences: v.optional(v.object({
+            email: v.object({
+                enabled: v.boolean(),
+                frequency: v.string(),
+            }),
+            inApp: v.boolean(),
+        })),
+    },
+    handler: async (ctx, args) => {
+        const viewer = await getViewer(ctx);
+        if (!viewer) throw new Error("Unauthorized");
+
+        const updates: Record<string, unknown> = {};
+
+        // Merge profile updates
+        const currentProfile = viewer.profile || { positions: [], status: "active", joinDate: Date.now() };
+        const updatedProfile = { ...currentProfile };
+
+        if (args.privacyLevel) {
+            updatedProfile.privacyLevel = args.privacyLevel;
+        }
+
+        if (args.customFields) {
+            // Merge custom fields (shallow merge)
+            updatedProfile.customFields = {
+                ...(currentProfile.customFields || {}),
+                ...args.customFields,
+            };
+        }
+
+        updates.profile = updatedProfile;
+
+        if (args.notificationPreferences) {
+            updates.notificationPreferences = args.notificationPreferences;
+        }
+
+        await ctx.db.patch(viewer._id, updates);
+
+        // Audit Log
+        await createAuditLog(ctx, {
+            userId: viewer._id,
+            action: "user.update_profile",
+            entityType: "users",
+            entityId: viewer._id,
+            changes: { before: viewer.profile, after: updatedProfile },
+        });
+
+        return { success: true };
+    },
+});

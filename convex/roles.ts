@@ -124,3 +124,229 @@ export const getMyPermissions = query({
         };
     }
 });
+
+// ============================================
+// ROLE CRUD MUTATIONS
+// ============================================
+
+/**
+ * Get all roles (admin only)
+ */
+export const getAllRoles = query({
+    args: {},
+    handler: async (ctx) => {
+        await ensureAdmin(ctx);
+        return await ctx.db.query("roles").collect();
+    },
+});
+
+/**
+ * Create a new custom role
+ */
+export const createRole = mutation({
+    args: {
+        slug: v.string(),
+        name: v.string(),
+        description: v.optional(v.string()),
+        uiPermissions: v.array(v.string()),
+        permissions: v.optional(v.array(v.object({
+            resource: v.string(),
+            actions: v.array(v.string()),
+            scope: v.string(),
+        }))),
+        allowedProcessTypes: v.optional(v.array(v.string())),
+        defaultDashboardSlug: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        await ensureAdmin(ctx);
+
+        // Validate slug format
+        if (!/^[a-z][a-z0-9_]*$/.test(args.slug)) {
+            throw new Error("Slug must be lowercase, start with a letter, and contain only letters, numbers, and underscores");
+        }
+
+        // Check for existing role
+        const existing = await ctx.db
+            .query("roles")
+            .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+            .first();
+
+        if (existing) {
+            throw new Error(`Role with slug "${args.slug}" already exists`);
+        }
+
+        const roleId = await ctx.db.insert("roles", {
+            slug: args.slug,
+            name: args.name,
+            description: args.description ?? "",
+            uiPermissions: args.uiPermissions,
+            permissions: args.permissions ?? [],
+            allowedProcessTypes: args.allowedProcessTypes ?? [],
+            defaultDashboardSlug: args.defaultDashboardSlug ?? "member_dashboard",
+            isSystemRole: false, // Custom roles are not system roles
+        });
+
+        return roleId;
+    },
+});
+
+/**
+ * Update an existing role
+ */
+export const updateRole = mutation({
+    args: {
+        roleId: v.id("roles"),
+        name: v.optional(v.string()),
+        description: v.optional(v.string()),
+        uiPermissions: v.optional(v.array(v.string())),
+        permissions: v.optional(v.array(v.object({
+            resource: v.string(),
+            actions: v.array(v.string()),
+            scope: v.string(),
+        }))),
+        allowedProcessTypes: v.optional(v.array(v.string())),
+        defaultDashboardSlug: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        await ensureAdmin(ctx);
+
+        const role = await ctx.db.get(args.roleId);
+        if (!role) throw new Error("Role not found");
+
+        // Build updates object with only provided fields
+        const { roleId, ...updates } = args;
+        const filteredUpdates = Object.fromEntries(
+            Object.entries(updates).filter(([, v]) => v !== undefined)
+        );
+
+        if (Object.keys(filteredUpdates).length === 0) {
+            throw new Error("No updates provided");
+        }
+
+        await ctx.db.patch(args.roleId, filteredUpdates);
+
+        return { success: true };
+    },
+});
+
+/**
+ * Delete a custom role (system roles cannot be deleted)
+ */
+export const deleteRole = mutation({
+    args: { roleId: v.id("roles") },
+    handler: async (ctx, args) => {
+        await ensureAdmin(ctx);
+
+        const role = await ctx.db.get(args.roleId);
+        if (!role) throw new Error("Role not found");
+
+        if (role.isSystemRole) {
+            throw new Error("System roles cannot be deleted");
+        }
+
+        // Check if any users have this role
+        const usersWithRole = await ctx.db
+            .query("users")
+            .withIndex("by_system_role", (q) => q.eq("systemRole", role.slug))
+            .collect();
+
+        if (usersWithRole.length > 0) {
+            throw new Error(`Cannot delete role: ${usersWithRole.length} user(s) are assigned this role`);
+        }
+
+        await ctx.db.delete(args.roleId);
+
+        return { success: true };
+    },
+});
+
+/**
+ * Assign a role to a user
+ */
+export const assignRoleToUser = mutation({
+    args: {
+        userId: v.id("users"),
+        roleSlug: v.string(),
+    },
+    handler: async (ctx, args) => {
+        await ensureAdmin(ctx);
+
+        const user = await ctx.db.get(args.userId);
+        if (!user || user.isDeleted) throw new Error("User not found");
+
+        const role = await ctx.db
+            .query("roles")
+            .withIndex("by_slug", (q) => q.eq("slug", args.roleSlug))
+            .first();
+
+        if (!role) throw new Error(`Role "${args.roleSlug}" not found`);
+
+        await ctx.db.patch(args.userId, { systemRole: args.roleSlug });
+
+        return { success: true, roleName: role.name };
+    },
+});
+
+/**
+ * Duplicate an existing role (useful for creating variations)
+ */
+export const duplicateRole = mutation({
+    args: {
+        roleId: v.id("roles"),
+        newSlug: v.string(),
+        newName: v.string(),
+    },
+    handler: async (ctx, args) => {
+        await ensureAdmin(ctx);
+
+        const sourceRole = await ctx.db.get(args.roleId);
+        if (!sourceRole) throw new Error("Source role not found");
+
+        // Check new slug doesn't exist
+        const existing = await ctx.db
+            .query("roles")
+            .withIndex("by_slug", (q) => q.eq("slug", args.newSlug))
+            .first();
+
+        if (existing) {
+            throw new Error(`Role with slug "${args.newSlug}" already exists`);
+        }
+
+        const newRoleId = await ctx.db.insert("roles", {
+            slug: args.newSlug,
+            name: args.newName,
+            description: sourceRole.description ? `Based on ${sourceRole.name}` : "",
+            uiPermissions: sourceRole.uiPermissions,
+            permissions: sourceRole.permissions,
+            allowedProcessTypes: sourceRole.allowedProcessTypes,
+            defaultDashboardSlug: sourceRole.defaultDashboardSlug,
+            isSystemRole: false,
+        });
+
+        return newRoleId;
+    },
+});
+
+/**
+ * Get users by role (for role management UI)
+ */
+export const getUsersByRole = query({
+    args: { roleSlug: v.string() },
+    handler: async (ctx, args) => {
+        await ensureAdmin(ctx);
+
+        const users = await ctx.db
+            .query("users")
+            .withIndex("by_system_role", (q) => q.eq("systemRole", args.roleSlug))
+            .filter((q) => q.neq(q.field("isDeleted"), true))
+            .collect();
+
+        return users.map((u) => ({
+            _id: u._id,
+            name: u.name,
+            email: u.email,
+            clearanceLevel: u.clearanceLevel,
+            status: u.profile?.status,
+        }));
+    },
+});
