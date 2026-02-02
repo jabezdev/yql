@@ -81,7 +81,7 @@ export const getDepartmentMembers = query({
     args: { departmentId: v.id("departments") },
     handler: async (ctx, args) => {
         const user = await getViewer(ctx);
-        if (!user || (user.clearanceLevel ?? 0) < 3) {
+        if (!user || !['admin', 'manager', 'lead', 'officer'].includes(user.systemRole || "")) {
             throw new Error("Unauthorized: Officer access required");
         }
 

@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { getViewer, ensureAdmin } from "./auth";
+import { getViewer, ensureAdmin, ensureReviewer } from "./auth";
 import { createAuditLog } from "./auditLog";
 
 // ============================================
@@ -71,7 +71,7 @@ export const getUserGoals = query({
 
         // Can view own goals or if manager/officer
         const isOwn = viewer._id === args.userId;
-        const isOfficer = (viewer.clearanceLevel ?? 0) >= 3;
+        const isOfficer = ['admin', 'manager', 'lead', 'officer'].includes(viewer.systemRole || "");
 
         // Check if viewer is manager of this user
         let isManager = false;
@@ -175,10 +175,8 @@ export const getTeamGoals = query({
 export const getCycleGoalStats = query({
     args: { cycleId: v.id("review_cycles") },
     handler: async (ctx, args) => {
+        await ensureReviewer(ctx);
         const viewer = await getViewer(ctx);
-        if (!viewer || (viewer.clearanceLevel ?? 0) < 3) {
-            throw new Error("Officer access required");
-        }
 
         const goals = await ctx.db
             .query("goals")
@@ -228,7 +226,7 @@ export const createGoal = mutation({
         if (!viewer) throw new Error("Unauthorized");
 
         // Require at least member level
-        if ((viewer.clearanceLevel ?? 0) < 2) {
+        if (viewer.systemRole === 'guest' || viewer.systemRole === 'candidate') {
             throw new Error("Member status required to create goals");
         }
 
@@ -277,9 +275,28 @@ export const updateGoal = mutation({
         const goal = await ctx.db.get(args.goalId);
         if (!goal || goal.isDeleted) throw new Error("Goal not found");
 
-        // Only owner or admin can update
-        if (goal.userId !== viewer._id && (viewer.clearanceLevel ?? 0) < 4) {
-            throw new Error("Unauthorized to update this goal");
+        // Check if viewer is manager of this user
+        let isManager = false;
+        if (goal.userId !== viewer._id && viewer.systemRole !== 'admin') {
+            const assignment = await ctx.db
+                .query("manager_assignments")
+                .withIndex("by_manager", (q) => q.eq("managerId", viewer._id))
+                .filter((q) =>
+                    q.and(
+                        q.eq(q.field("userId"), goal.userId),
+                        q.neq(q.field("isDeleted"), true)
+                    )
+                )
+                .first();
+
+            const now = Date.now();
+            isManager = !!assignment &&
+                (!assignment.startDate || assignment.startDate <= now) &&
+                (!assignment.endDate || assignment.endDate >= now);
+
+            if (!isManager) {
+                throw new Error("Unauthorized to update this goal");
+            }
         }
 
         // Validate status
@@ -324,8 +341,26 @@ export const completeGoal = mutation({
         const goal = await ctx.db.get(args.goalId);
         if (!goal || goal.isDeleted) throw new Error("Goal not found");
 
-        if (goal.userId !== viewer._id && (viewer.clearanceLevel ?? 0) < 4) {
-            throw new Error("Unauthorized");
+        if (goal.userId !== viewer._id && viewer.systemRole !== 'admin') {
+            const assignment = await ctx.db
+                .query("manager_assignments")
+                .withIndex("by_manager", (q) => q.eq("managerId", viewer._id))
+                .filter((q) =>
+                    q.and(
+                        q.eq(q.field("userId"), goal.userId),
+                        q.neq(q.field("isDeleted"), true)
+                    )
+                )
+                .first();
+
+            const now = Date.now();
+            const isValid = !!assignment &&
+                (!assignment.startDate || assignment.startDate <= now) &&
+                (!assignment.endDate || assignment.endDate >= now);
+
+            if (!isValid) {
+                throw new Error("Unauthorized");
+            }
         }
 
         await ctx.db.patch(args.goalId, {
@@ -355,7 +390,7 @@ export const deleteGoal = mutation({
         const goal = await ctx.db.get(args.goalId);
         if (!goal || goal.isDeleted) throw new Error("Goal not found");
 
-        if (goal.userId !== viewer._id && (viewer.clearanceLevel ?? 0) < 4) {
+        if (goal.userId !== viewer._id && viewer.systemRole !== 'admin') {
             throw new Error("Unauthorized");
         }
 

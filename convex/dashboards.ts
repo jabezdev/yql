@@ -1,5 +1,5 @@
 
-import { v } from "convex/values";
+
 import { query } from "./_generated/server";
 import { getViewer } from "./auth";
 
@@ -74,7 +74,7 @@ export const getDashboardData = query({
 
         // Calculate specific stats
         const activeProcesses = processes.filter(p => p.status === 'in_progress');
-        const completedProcesses = processes.filter(p => p.status === 'approved' || p.status === 'rejected');
+
 
         // This object can be expanded as we add more widget types
         return {

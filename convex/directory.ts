@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { getViewer } from "./auth";
-import { Doc } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 
 // ============================================
 // PRIVACY LEVELS
@@ -30,25 +30,38 @@ function canViewFullProfile(
     // Always can view own profile
     if (viewer._id === target._id) return true;
 
-    // Admins (level 4+) can see everything
-    if ((viewer.clearanceLevel ?? 0) >= 4) return true;
+    // Admins (admin) can see everything
+    if (viewer.systemRole === 'admin') return true;
 
     const privacyLevel = target.profile?.privacyLevel ?? "members_only";
+
+    // Helper to determine "level" from role for hierarchy comparison (simplified)
+    const getRoleLevel = (role?: string) => {
+        if (role === 'admin') return 4;
+        if (role === 'manager') return 3; // or lead
+        if (role === 'lead') return 3;
+        if (role === 'officer') return 3;
+        if (role === 'member') return 2;
+        if (role === 'guest') return 0;
+        return 1; // default
+    };
+
+    const viewerLevel = getRoleLevel(viewer.systemRole);
 
     switch (privacyLevel) {
         case "public":
             return true;
         case "members_only":
             // Member (level 2+) can view
-            return (viewer.clearanceLevel ?? 0) >= 2;
+            return viewerLevel >= 2;
         case "leads_only":
             // Officer (level 3+) can view
-            return (viewer.clearanceLevel ?? 0) >= 3;
+            return viewerLevel >= 3;
         case "private":
             // Only self and admins (handled above)
             return false;
         default:
-            return (viewer.clearanceLevel ?? 0) >= 2;
+            return viewerLevel >= 2;
     }
 }
 
@@ -75,13 +88,13 @@ function filterUserData(
     return {
         ...publicData,
         email: target.email,
-        clearanceLevel: target.clearanceLevel,
+        // Removed clearanceLevel
         profile: target.profile ? {
             positions: target.profile.positions,
             status: target.profile.status,
             joinDate: target.profile.joinDate,
             // Don't expose exit details unless admin
-            ...(((viewer.clearanceLevel ?? 0) >= 4) && {
+            ...((viewer.systemRole === 'admin') && {
                 exitDate: target.profile.exitDate,
                 exitReason: target.profile.exitReason,
             }),
@@ -108,7 +121,7 @@ export const getDirectory = query({
         if (!viewer) throw new Error("Unauthorized");
 
         // Guests cannot access directory
-        if ((viewer.clearanceLevel ?? 0) < 1) {
+        if (viewer.systemRole === 'guest' || viewer.systemRole === 'candidate') {
             throw new Error("Directory access requires member status");
         }
 
@@ -118,7 +131,7 @@ export const getDirectory = query({
         users = users.filter((u) => !u.isDeleted);
 
         // Filter by active status unless admin requesting inactive
-        if (!args.includeInactive || (viewer.clearanceLevel ?? 0) < 3) {
+        if (!args.includeInactive || viewer.systemRole !== 'admin') {
             users = users.filter((u) => {
                 const status = u.profile?.status;
                 return status === "active" || status === "probation";
@@ -164,7 +177,7 @@ export const searchMembers = query({
         const viewer = await getViewer(ctx);
         if (!viewer) throw new Error("Unauthorized");
 
-        if ((viewer.clearanceLevel ?? 0) < 1) {
+        if (viewer.systemRole === 'guest' || viewer.systemRole === 'candidate') {
             throw new Error("Search requires member status");
         }
 
@@ -185,8 +198,9 @@ export const searchMembers = query({
         // Search by name or email
         users = users.filter((u) => {
             const nameMatch = u.name.toLowerCase().includes(searchTerm);
-            // Only search email if viewer is officer+
-            const emailMatch = (viewer.clearanceLevel ?? 0) >= 3 &&
+            // Only search email if viewer is officer+ (or admin/manager/lead)
+            const isOfficerPlus = ['admin', 'manager', 'lead', 'officer'].includes(viewer.systemRole || "");
+            const emailMatch = isOfficerPlus &&
                 u.email.toLowerCase().includes(searchTerm);
             return nameMatch || emailMatch;
         });
@@ -256,8 +270,8 @@ export const getDirectoryStats = query({
         const viewer = await getViewer(ctx);
         if (!viewer) throw new Error("Unauthorized");
 
-        // Require officer level for stats
-        if ((viewer.clearanceLevel ?? 0) < 3) {
+        // Require officer level for stats (Admin, Manager, Lead)
+        if (!['admin', 'manager', 'lead', 'officer'].includes(viewer.systemRole || "")) {
             throw new Error("Stats require officer access");
         }
 

@@ -201,3 +201,102 @@ export const getProgramStages = query({
         return stages.filter(s => s !== null && !s.isDeleted);
     },
 });
+
+/**
+ * Update role access configuration for a stage (Phase 4)
+ */
+export const updateStageRoleAccess = mutation({
+    args: {
+        stageId: v.id("stages"),
+        roleAccess: v.array(v.object({
+            roleSlug: v.string(),
+            canView: v.boolean(),
+            canSubmit: v.boolean(),
+            canApprove: v.boolean(),
+        })),
+    },
+    handler: async (ctx, args) => {
+        await ensureAdmin(ctx);
+
+        const stage = await ctx.db.get(args.stageId);
+        if (!stage || stage.isDeleted) {
+            throw new Error("Stage not found");
+        }
+
+        await ctx.db.patch(args.stageId, {
+            roleAccess: args.roleAccess,
+        });
+
+        return { success: true };
+    },
+});
+
+/**
+ * Fetches stages visible to the current user based on their role.
+ * Returns stages with access mask.
+ */
+export const getVisibleProgramStages = query({
+    args: { programId: v.id("programs") },
+    handler: async (ctx, args) => {
+        const identity = await ctx.auth.getUserIdentity();
+        if (!identity) return [];
+
+        const user = await ctx.db
+            .query("users")
+            .withIndex("by_tokenIdentifier", q => q.eq("tokenIdentifier", identity.tokenIdentifier))
+            .first();
+
+        if (!user) return [];
+
+        const roleSlug = user.systemRole || "guest";
+        const isAdmin = user.systemRole === 'admin';
+
+        const program = await ctx.db.get(args.programId);
+        if (!program) return [];
+
+        if (!program.stageIds || program.stageIds.length === 0) {
+            return [];
+        }
+
+        const stages = await Promise.all(program.stageIds.map(id => ctx.db.get(id)));
+        const activeStages = stages.filter(s => s !== null && !s.isDeleted);
+
+        // Admin sees all with full access
+        if (isAdmin) {
+            return activeStages.map(stage => ({
+                stage,
+                access: { canView: true, canSubmit: true, canApprove: true },
+            }));
+        }
+
+        // Filter and decorate by role access
+        const visibleStages = [];
+        for (const stage of activeStages) {
+            if (!stage) continue;
+
+            // Default access if no roleAccess configured
+            let access = { canView: true, canSubmit: true, canApprove: false };
+
+            if (stage.roleAccess) {
+                const roleConfig = stage.roleAccess.find(ra => ra.roleSlug === roleSlug);
+                if (roleConfig) {
+                    // If explicitly configured and canView is false, skip
+                    if (!roleConfig.canView) continue;
+                    access = {
+                        canView: roleConfig.canView,
+                        canSubmit: roleConfig.canSubmit,
+                        canApprove: roleConfig.canApprove,
+                    };
+                }
+                // If no config for this role and there ARE roleAccess entries, default deny
+                else if (stage.roleAccess.length > 0) {
+                    continue;
+                }
+            }
+
+            visibleStages.push({ stage, access });
+        }
+
+        return visibleStages;
+    },
+});

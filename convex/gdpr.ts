@@ -29,7 +29,7 @@ export const exportMyData = mutation({
             email: user.email,
             name: user.name,
             systemRole: user.systemRole,
-            clearanceLevel: user.clearanceLevel,
+            // clearanceLevel removed
             profileData: user.profile,
             notificationPreferences: user.notificationPreferences,
         };

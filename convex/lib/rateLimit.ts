@@ -1,5 +1,5 @@
 import type { MutationCtx } from "../_generated/server";
-import { Id } from "../_generated/dataModel";
+import type { Id } from "../_generated/dataModel";
 
 /**
  * Rate limiting configuration per action type

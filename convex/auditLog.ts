@@ -1,6 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation } from "./_generated/server";
-import { Id } from "./_generated/dataModel";
+import { query, internalMutation } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { getViewer, ensureAdmin } from "./auth";
 import type { MutationCtx } from "./_generated/server";
 
@@ -112,7 +112,7 @@ export const getEntityLogs = query({
     },
     handler: async (ctx, args) => {
         const user = await getViewer(ctx);
-        if (!user || (user.clearanceLevel ?? 0) < 3) {
+        if (!user || !['admin', 'manager', 'lead', 'officer'].includes(user.systemRole || "")) {
             throw new Error("Unauthorized: Officer access required");
         }
 

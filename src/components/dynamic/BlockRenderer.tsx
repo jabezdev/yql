@@ -85,7 +85,7 @@ export default function BlockRenderer({ stageId, initialData, onChange, readOnly
                                 block={block}
                                 value={answers[block._id]}
                                 onChange={(val: unknown) => handleBlockChange(block._id, val)}
-                                readOnly={readOnly}
+                                readOnly={readOnly || (block as any)._readOnly}
                                 allValues={answers}
                             />
                         </div>

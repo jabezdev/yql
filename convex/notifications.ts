@@ -1,9 +1,9 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
-import { Id } from "./_generated/dataModel";
-import { getViewer, ensureAdmin } from "./auth";
-import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import { getViewer } from "./auth";
+import { api } from "./_generated/api";
 import { requireRateLimit } from "./lib/rateLimit";
 
 // ============================================
@@ -107,7 +107,14 @@ export const createNotification = mutation({
     handler: async (ctx, args) => {
         // Only admins or system can create notifications for others
         const requestor = await getViewer(ctx);
-        if (!requestor || (requestor.clearanceLevel ?? 0) < 3) {
+        if (!requestor) throw new Error("Unauthorized");
+
+        // Check if authorized (Admin, Manager, Lead, Officer)
+        // Simplest: Check if systemRole is NOT guest/candidate
+        const isStaff = requestor.systemRole &&
+            ['admin', 'manager', 'lead', 'officer', 'member'].includes(requestor.systemRole);
+
+        if (!isStaff && requestor.systemRole !== 'admin') {
             throw new Error("Unauthorized");
         }
 

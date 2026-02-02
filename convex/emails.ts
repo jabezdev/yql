@@ -11,7 +11,7 @@ export const sendEmail = action({
         template: v.string(), // e.g. "booking_confirmation"
         payload: v.any(), // Dynamic data for the template
     },
-    handler: async (ctx, args) => {
+    handler: async (_ctx, args) => {
         console.log("------------------------------------------");
         // Masking PII for logs
         const maskedTo = args.to.replace(/(^.{1})[^@]*@/, '$1***@');

@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { getViewer, ensureAdmin } from "./auth";
 import { createAuditLog } from "./auditLog";
-import { Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 
 // ============================================
 // CONSTANTS
@@ -34,7 +34,7 @@ export const getManagers = query({
         if (!viewer) throw new Error("Unauthorized");
 
         // Users can see their own managers; officers+ can see anyone's
-        const canView = viewer._id === args.userId || (viewer.clearanceLevel ?? 0) >= 3;
+        const canView = viewer._id === args.userId || ['admin', 'manager', 'lead', 'officer'].includes(viewer.systemRole || "");
         if (!canView) throw new Error("Unauthorized");
 
         let assignments = await ctx.db
@@ -78,7 +78,7 @@ export const getDirectReports = query({
         const managerId = args.managerId ?? viewer._id;
 
         // Users can see their own reports; officers+ can see anyone's
-        const canView = viewer._id === managerId || (viewer.clearanceLevel ?? 0) >= 3;
+        const canView = viewer._id === managerId || ['admin', 'manager', 'lead', 'officer'].includes(viewer.systemRole || "");
         if (!canView) throw new Error("Unauthorized");
 
         let assignments = await ctx.db

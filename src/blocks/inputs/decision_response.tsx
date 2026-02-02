@@ -1,6 +1,6 @@
 import React from "react";
 import { type BlockConfigProps, type ApplicantViewProps, type ReviewerViewProps } from "../registry";
-import { ThumbsUp, ThumbsDown, PartyPopper } from "lucide-react";
+import { ThumbsDown, PartyPopper } from "lucide-react";
 
 // --- Configuration Editor ---
 export const ConfigEditor: React.FC<BlockConfigProps> = ({ config, onChange }) => {
@@ -85,7 +85,7 @@ export const ParticipantView: React.FC<ApplicantViewProps> = ({ block, value, on
 };
 
 // --- Reviewer View ---
-export const ReviewerView: React.FC<ReviewerViewProps> = ({ block, applicantValue }) => {
+export const ReviewerView: React.FC<ReviewerViewProps> = ({ block: _block, applicantValue }) => {
     return (
         <div className="mb-4">
             <div className="text-xs font-bold text-gray-400 uppercase mb-1">Applicant Decision</div>

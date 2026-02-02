@@ -104,7 +104,7 @@ export const getStageBlocks = query({
         const program = await ctx.db.get(stage.programId);
         if (!program) return [];
 
-        const isAdminOrReviewer = (user.clearanceLevel ?? 0) >= 3;
+        const isAdminOrReviewer = ['admin', 'manager', 'lead', 'officer'].includes(user.systemRole || "") || user.systemRole === "admin";
 
         // Check Access
         if (!isAdminOrReviewer) {
@@ -124,8 +124,18 @@ export const getStageBlocks = query({
         const validBlocks = blocks.filter(b => b !== null);
 
         if (!isAdminOrReviewer) {
+            const userRole = user.systemRole || "guest"; // Simple role resolution for now, can be improved
             const internalBlockTypes = ['review_rubric', 'decision_gate', 'auto_score'];
-            return validBlocks.map(block => {
+
+            return validBlocks.filter(block => {
+                // Phase 5: Check Granular Access
+                if (block.roleAccess) {
+                    const rule = block.roleAccess.find(r => r.roleSlug === userRole);
+                    if (rule && rule.canView === false) return false;
+                    // If rule exists and canView is true, or no rule exists (default visible), continue
+                }
+                return true;
+            }).map(block => {
                 if (internalBlockTypes.includes(block.type)) {
                     return {
                         ...block,
@@ -137,6 +147,13 @@ export const getStageBlocks = query({
                         ...block,
                         config: { ...block.config, passcode: undefined },
                     };
+                }
+                // Mask editability if needed (can be used by UI)
+                if (block.roleAccess) {
+                    const rule = block.roleAccess.find(r => r.roleSlug === userRole);
+                    if (rule && rule.canEdit === false) {
+                        return { ...block, _readOnly: true }; // UI hint
+                    }
                 }
                 return block;
             });

@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { api } from "./_generated/api";
-import { getViewer, ensureAdmin, ensureReviewer } from "./auth";
+import { getViewer } from "./auth";
 import { createAuditLog } from "./auditLog";
 import { requireRateLimit } from "./lib/rateLimit";
 
@@ -64,7 +64,7 @@ export const createEvents = mutation({
         await requireRateLimit(ctx, user._id, "event.create");
 
         // Require at least probation level (clearance 1) to create events
-        if ((user.clearanceLevel ?? 0) < 1) {
+        if (['guest'].includes(user.systemRole || "")) {
             throw new Error("Unauthorized: Insufficient access level to create events");
         }
 
@@ -112,7 +112,7 @@ export const deleteEvent = mutation({
 
         // Only host or admin can delete
         const isHost = event.hostId === user._id;
-        const isAdmin = (user.clearanceLevel ?? 0) >= 4;
+        const isAdmin = user.systemRole === 'admin';
 
         if (!isHost && !isAdmin) {
             throw new Error("Unauthorized: Only the host or an admin can delete this event");

@@ -13,7 +13,7 @@ interface BlockReviewerProps {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default function BlockReviewer({ stageId, blockIds, applicantData, reviewData, onReviewChange, isReviewer = false }: BlockReviewerProps) {
+export default function BlockReviewer({ stageId, blockIds: _blockIds, applicantData, reviewData, onReviewChange, isReviewer = false }: BlockReviewerProps) {
     const blocks = useQuery(api.blocks.getStageBlocks, { stageId: stageId as any });
 
     if (blocks === undefined) return <div className="p-4"><Loader className="animate-spin text-gray-400" /></div>;

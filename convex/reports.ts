@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
-import { getViewer, ensureAdmin } from "./auth";
+import { getViewer, ensureAdmin, ensureReviewer } from "./auth";
 
 // ============================================
 // RECRUITMENT ANALYTICS
@@ -54,8 +54,8 @@ export const getRecruitmentFunnel = query({
             statusCounts[process.status] = (statusCounts[process.status] || 0) + 1;
 
             // Stage counts
-            if (process.currentStage) {
-                const stageName = stageNames.get(process.currentStage) ?? "Unknown";
+            if (process.currentStageId) {
+                const stageName = stageNames.get(process.currentStageId) ?? "Unknown";
                 stageCounts[stageName] = (stageCounts[stageName] || 0) + 1;
             }
         }
@@ -137,7 +137,7 @@ export const getMemberStats = query({
     args: {},
     handler: async (ctx) => {
         const viewer = await getViewer(ctx);
-        if (!viewer || (viewer.clearanceLevel ?? 0) < 3) {
+        if (!viewer || !['admin', 'manager', 'lead', 'officer'].includes(viewer.systemRole || "")) {
             throw new Error("Officer access required");
         }
 
@@ -158,10 +158,14 @@ export const getMemberStats = query({
             roleCounts[role] = (roleCounts[role] || 0) + 1;
         }
 
-        // Count by clearance level
+        // Count by role (replacing clearance level count which is deprecated)
+        // We'll keep the key "byClearanceLevel" for frontend compatibility for now but return role distribution or mocks
         const clearanceCounts: Record<number, number> = {};
         for (const user of activeUsers) {
-            const level = user.clearanceLevel ?? 0;
+            const level = user.systemRole === 'admin' ? 5 :
+                (user.systemRole === 'manager' ? 4 :
+                    (user.systemRole === 'officer' ? 3 :
+                        (user.systemRole === 'member' ? 2 : 1)));
             clearanceCounts[level] = (clearanceCounts[level] || 0) + 1;
         }
 
@@ -227,10 +231,8 @@ export const getMemberGrowth = query({
 export const getReviewCycleStats = query({
     args: { cycleId: v.optional(v.id("review_cycles")) },
     handler: async (ctx, args) => {
+        await ensureReviewer(ctx);
         const viewer = await getViewer(ctx);
-        if (!viewer || (viewer.clearanceLevel ?? 0) < 3) {
-            throw new Error("Officer access required");
-        }
 
         // If cycleId provided, get stats for that cycle; otherwise get overall
         if (args.cycleId) {
@@ -239,7 +241,7 @@ export const getReviewCycleStats = query({
 
             const peerAssignments = await ctx.db
                 .query("peer_review_assignments")
-                .withIndex("by_cycle", (q) => q.eq("cycleId", args.cycleId))
+                .withIndex("by_cycle", (q) => q.eq("cycleId", args.cycleId!))
                 .collect();
 
             const statusCounts: Record<string, number> = {
@@ -362,7 +364,7 @@ export const exportProcesses = query({
             processes.map(async (process) => {
                 const user = await ctx.db.get(process.userId);
                 const program = process.programId ? await ctx.db.get(process.programId) : null;
-                const currentStage = process.currentStage ? await ctx.db.get(process.currentStage) : null;
+                const currentStage = process.currentStageId ? await ctx.db.get(process.currentStageId) : null;
 
                 return {
                     processId: process._id,
@@ -433,7 +435,7 @@ export const exportMembers = query({
                 name: user.name,
                 email: user.email,
                 systemRole: user.systemRole ?? "guest",
-                clearanceLevel: user.clearanceLevel ?? 0,
+                role: user.systemRole,
                 status: user.profile?.status ?? "unknown",
                 department: deptName,
                 position: primaryPosition?.title ?? "N/A",
@@ -450,7 +452,7 @@ export const exportMembers = query({
                 "name",
                 "email",
                 "systemRole",
-                "clearanceLevel",
+                "role",
                 "status",
                 "department",
                 "position",
@@ -532,7 +534,7 @@ export const getTDDashboardSummary = query({
     args: {},
     handler: async (ctx) => {
         const viewer = await getViewer(ctx);
-        if (!viewer || (viewer.clearanceLevel ?? 0) < 3) {
+        if (!viewer || !['admin', 'manager', 'lead', 'officer'].includes(viewer.systemRole || "")) {
             throw new Error("Officer access required");
         }
 

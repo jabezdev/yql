@@ -13,47 +13,87 @@ export const DEFAULT_ROLES = [
         permissions: [
             { resource: "processes", actions: ["read", "create"], scope: "own" },
             { resource: "events", actions: ["read"], scope: "own" },
+            { resource: "goals", actions: ["read"], scope: "own" },
         ],
-        allowedProcessTypes: ["recruitment"],
-        defaultDashboardSlug: "guest_dashboard",
+        defaultDashboardSlug: "guest",
+        isSystemRole: true,
+    },
+    {
+        slug: "contributor",
+        name: "Contributor",
+        description: "Non-member helper or volunteer.",
+        uiPermissions: ["dashboard.view_member_portal"],
+        permissions: [
+            { resource: "processes", actions: ["read", "create", "update"], scope: "own" },
+        ],
+        defaultDashboardSlug: "guest", // or a constrained member view
+        isSystemRole: true,
+    },
+    {
+        slug: "alumni",
+        name: "Alumni",
+        description: "Former member.",
+        uiPermissions: ["dashboard.view_member_portal"],
+        permissions: [
+            { resource: "processes", actions: ["read"], scope: "own" },
+        ],
+        defaultDashboardSlug: "member",
         isSystemRole: true,
     },
     {
         slug: "member",
         name: "Member",
-        description: "Active organization member.",
-        uiPermissions: ["dashboard.view_member_portal", "dashboard.view_programs", "dashboard.view_surveys"],
+        description: "Standard organization member.",
+        uiPermissions: ["dashboard.view_member_portal", "dashboard.view_programs", "dashboard.view_surveys", "dashboard.view_goals"],
         permissions: [
             { resource: "processes", actions: ["read", "create", "update"], scope: "own" },
             { resource: "events", actions: ["read", "create"], scope: "department" },
-            { resource: "users", actions: ["read"], scope: "department" },
+            { resource: "users", actions: ["read"], scope: "all" },
             { resource: "departments", actions: ["read"], scope: "all" },
+            { resource: "goals", actions: ["read", "create", "update"], scope: "own" },
+            { resource: "reviews", actions: ["read", "create"], scope: "own" },
         ],
-        allowedProcessTypes: ["recruitment", "recommitment", "survey", "loa_request"],
-        defaultDashboardSlug: "member_dashboard",
+        defaultDashboardSlug: "member",
         isSystemRole: true,
     },
     {
-        slug: "officer",
-        name: "Officer",
-        description: "Department officer with management access.",
-        uiPermissions: ["dashboard.view_member_portal", "dashboard.view_programs", "dashboard.manage_reviews"],
+        slug: "manager",
+        name: "Manager",
+        description: "Operational lead (Squad Lead, Project Manager).",
+        uiPermissions: ["dashboard.view_member_portal", "dashboard.view_programs", "dashboard.manage_team"],
         permissions: [
             { resource: "processes", actions: ["read", "update"], scope: "department" },
-            { resource: "users", actions: ["read", "update"], scope: "department" },
+            { resource: "users", actions: ["read"], scope: "all" },
+            { resource: "users", actions: ["update"], scope: "department" },
             { resource: "events", actions: ["read", "create", "update", "delete"], scope: "department" },
             { resource: "reviews", actions: ["read", "create"], scope: "department" },
             { resource: "departments", actions: ["read"], scope: "all" },
+            { resource: "goals", actions: ["read", "create", "update"], scope: "department" },
         ],
-        allowedProcessTypes: ["recruitment", "recommitment", "survey", "loa_request"],
-        defaultDashboardSlug: "officer_dashboard",
+        defaultDashboardSlug: "manager",
+        isSystemRole: true,
+    },
+    {
+        slug: "lead",
+        name: "Team Lead",
+        description: "Strategic lead (Department Head, Director).",
+        uiPermissions: ["dashboard.view_member_portal", "dashboard.view_programs", "dashboard.manage_department", "dashboard.view_analytics"],
+        permissions: [
+            { resource: "processes", actions: ["read", "update"], scope: "department" },
+            { resource: "users", actions: ["read", "update", "delete"], scope: "department" },
+            { resource: "events", actions: ["read", "create", "update", "delete"], scope: "department" },
+            { resource: "reviews", actions: ["read", "create", "delete"], scope: "department" },
+            { resource: "departments", actions: ["read", "update"], scope: "department" },
+            { resource: "goals", actions: ["read", "create", "update"], scope: "department" },
+        ],
+        defaultDashboardSlug: "lead",
         isSystemRole: true,
     },
     {
         slug: "admin",
         name: "Administrator",
-        description: "System administrator with full access.",
-        uiPermissions: ["dashboard.view_recruitment", "dashboard.view_member_portal", "system.manage_configuration", "system.manage_users"],
+        description: "System owner with full access.",
+        uiPermissions: ["dashboard.view_recruitment", "dashboard.view_member_portal", "system.manage_configuration", "system.manage_users", "dashboard.view_analytics"],
         permissions: [
             { resource: "processes", actions: ["read", "create", "update", "delete"], scope: "all" },
             { resource: "users", actions: ["read", "create", "update", "delete"], scope: "all" },
@@ -62,9 +102,9 @@ export const DEFAULT_ROLES = [
             { resource: "departments", actions: ["read", "create", "update", "delete"], scope: "all" },
             { resource: "programs", actions: ["read", "create", "update", "delete"], scope: "all" },
             { resource: "roles", actions: ["read", "create", "update"], scope: "all" },
+            { resource: "goals", actions: ["read", "create", "update", "delete"], scope: "all" },
         ],
-        allowedProcessTypes: ["recruitment", "recommitment", "survey", "loa_request"],
-        defaultDashboardSlug: "admin_dashboard",
+        defaultDashboardSlug: "admin",
         isSystemRole: true,
     }
 ];
@@ -81,7 +121,6 @@ export const seedRoles = mutation({
                     name: roleDef.name,
                     description: roleDef.description,
                     uiPermissions: roleDef.uiPermissions,
-                    allowedProcessTypes: roleDef.allowedProcessTypes,
                     defaultDashboardSlug: roleDef.defaultDashboardSlug
                 });
             } else {
@@ -113,9 +152,9 @@ export const getMyPermissions = query({
 
         // Fallback checks if role missing in DB but exists on user
         if (!roleConfig) {
-            // Fallback for hardcoded behavior if DB is empty
-            if (user.systemRole === 'admin') return { role: 'admin', permissions: ['system.manage_configuration'] };
-            return { role: user.systemRole, permissions: [] };
+            // Strict Mode: If role permissions are missing from DB, return empty/guest
+            // This prevents "ghost" admin access via hardcoded fallbacks
+            return { role: "guest", permissions: [] };
         }
 
         return {
@@ -181,7 +220,6 @@ export const createRole = mutation({
             description: args.description ?? "",
             uiPermissions: args.uiPermissions,
             permissions: args.permissions ?? [],
-            allowedProcessTypes: args.allowedProcessTypes ?? [],
             defaultDashboardSlug: args.defaultDashboardSlug ?? "member_dashboard",
             isSystemRole: false, // Custom roles are not system roles
         });
@@ -318,7 +356,6 @@ export const duplicateRole = mutation({
             description: sourceRole.description ? `Based on ${sourceRole.name}` : "",
             uiPermissions: sourceRole.uiPermissions,
             permissions: sourceRole.permissions,
-            allowedProcessTypes: sourceRole.allowedProcessTypes,
             defaultDashboardSlug: sourceRole.defaultDashboardSlug,
             isSystemRole: false,
         });
@@ -345,7 +382,6 @@ export const getUsersByRole = query({
             _id: u._id,
             name: u.name,
             email: u.email,
-            clearanceLevel: u.clearanceLevel,
             status: u.profile?.status,
         }));
     },

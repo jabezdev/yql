@@ -2,7 +2,7 @@ import { internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 
 /**
  * Evaluates automations for a specific trigger.
@@ -61,7 +61,7 @@ interface AutomationAction {
         template?: string;
         variables?: Record<string, unknown>;
         systemRole?: string;
-        clearanceLevel?: number;
+        // clearanceLevel removed
         status?: string;
         [key: string]: unknown;
     };
@@ -86,10 +86,9 @@ async function executeAction(ctx: MutationCtx, action: AutomationAction, context
             break;
 
         case "update_role":
-            // e.g. payload: { systemRole: "member", clearanceLevel: 2 }
+            // e.g. payload: { systemRole: "member" }
             await ctx.db.patch(user._id, {
                 systemRole: action.payload.systemRole,
-                clearanceLevel: action.payload.clearanceLevel
             });
             break;
 

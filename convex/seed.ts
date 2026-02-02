@@ -1,8 +1,8 @@
 import { mutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
-import { api } from "./_generated/api";
+
 import { DEFAULT_ROLES } from "./roles";
-import { Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 
 // ============================================
 // DEFAULT DEPARTMENTS
@@ -64,7 +64,6 @@ async function seedRoles(ctx: MutationCtx) {
                 description: roleDef.description,
                 uiPermissions: roleDef.uiPermissions,
                 permissions: roleDef.permissions,
-                allowedProcessTypes: roleDef.allowedProcessTypes,
                 defaultDashboardSlug: roleDef.defaultDashboardSlug,
                 isSystemRole: roleDef.isSystemRole,
             });

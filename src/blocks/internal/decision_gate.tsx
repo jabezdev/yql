@@ -33,7 +33,7 @@ export const ReviewerView: React.FC<ReviewerViewProps> = ({ block, reviewerValue
     const decision = reviewerValue?.decision; // 'approve' | 'reject' | 'waitlist'
 
     const handleDecide = (d: string) => {
-        onChange({ decision: d, timestamp: new Date().toISOString() });
+        if (onChange) onChange({ decision: d, timestamp: new Date().toISOString() });
     };
 
     if (!isEditable) {

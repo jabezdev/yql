@@ -20,7 +20,7 @@ export const ParticipantView: React.FC<ApplicantViewProps> = () => {
 };
 
 // --- Reviewer View ---
-export const ReviewerView: React.FC<ReviewerViewProps> = ({ block, applicantValue, isEditable }) => {
+export const ReviewerView: React.FC<ReviewerViewProps> = ({ block: _block, applicantValue: _applicantValue, isEditable: _isEditable }) => {
     // For now, allow Reviewer to trigger a calculation? 
     // Or we rely on backend. Ideally backend.
     // But since we are client-side hacking for the demo:

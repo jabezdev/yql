@@ -38,7 +38,7 @@ export const ParticipantView: React.FC<ApplicantViewProps> = ({ block }) => {
 // --- Reviewer View ---
 export const ReviewerView: React.FC<ReviewerViewProps> = ({ block }) => {
     // Reviewer sees the same content as applicant
-    return <ApplicantView block={block} value={null} onChange={() => { }} />;
+    return <ParticipantView block={block} value={null} onChange={() => { }} />;
 };
 
 // --- Validation ---

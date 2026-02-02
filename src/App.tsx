@@ -1,13 +1,24 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { useConvexAuth, useQuery, useMutation } from "convex/react";
 import { Authenticated, Unauthenticated } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { useEffect } from "react";
+import { Loader2 } from "lucide-react";
+
+// Pages & Components
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
-import CoreDashboard from "./pages/CoreDashboard";
-import { Loader2 } from "lucide-react";
+import DashboardLayout from "./layouts/DashboardLayout";
+import RoleGuard from "./layouts/RoleGuard";
+
+// Unified Dashboard (replaces role-specific dashboards)
+import UnifiedDashboard from "./pages/UnifiedDashboard";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import SystemSettings from "./pages/admin/SystemSettings";
+import SettingsPage from "./pages/settings/SettingsPage";
+import AdminProgramList from "./pages/admin/programs/AdminProgramList";
+import ProgramDesigner from "./pages/admin/programs/ProgramDesigner";
 
 function UserIdSync() {
   const storeUser = useMutation(api.users.storeUser);
@@ -69,15 +80,57 @@ function App() {
           </>
         } />
 
-        {/* Unified Core Dashboard */}
+        {/* Unified Dashboard Route */}
         <Route path="/dashboard" element={
           <ProtectedRoute>
-            <CoreDashboard />
+            <DashboardLayout>
+              <Outlet />
+            </DashboardLayout>
           </ProtectedRoute>
-        } />
+        }>
+          {/* Main dashboard - dynamic content based on role from backend */}
+          <Route index element={<UnifiedDashboard />} />
 
-        {/* Catch-all for legacy routes - redirect to dashboard */}
-        <Route path="/admin/*" element={<Navigate to="/dashboard" replace />} />
+          {/* Admin Routes - protected by RoleGuard */}
+          <Route path="admin" element={
+            <RoleGuard allowedRoles={['admin']}>
+              <AdminDashboard />
+            </RoleGuard>
+          } />
+
+          <Route path="admin/settings" element={
+            <RoleGuard allowedRoles={['admin']}>
+              <SystemSettings />
+            </RoleGuard>
+          } />
+
+
+          {/* Program Management */}
+          <Route path="admin/programs" element={
+            <RoleGuard allowedRoles={['admin']}>
+              <AdminProgramList />
+            </RoleGuard>
+          } />
+
+          <Route path="admin/programs/:programId/design" element={
+            <RoleGuard allowedRoles={['admin']}>
+              <ProgramDesigner />
+            </RoleGuard>
+          } />
+          <Route path="settings" element={<SettingsPage />} />
+
+          {/* Future: Process view route */}
+          {/* <Route path="program/:programId" element={<ProgramView />} /> */}
+          {/* <Route path="process/:processId" element={<ProcessView />} /> */}
+        </Route>
+
+        {/* Legacy role-based routes - redirect to unified dashboard */}
+        <Route path="/dashboard/guest" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard/member" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard/manager" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard/lead" element={<Navigate to="/dashboard" replace />} />
+
+        {/* Catch-all for other legacy routes */}
         <Route path="/applicant/*" element={<Navigate to="/dashboard" replace />} />
         <Route path="/reviewer/*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

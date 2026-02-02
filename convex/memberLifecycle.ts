@@ -1,9 +1,9 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { Id } from "./_generated/dataModel";
-import { getViewer, ensureAdmin } from "./auth";
+import type { Id } from "./_generated/dataModel";
+import { getViewer, ensureAdmin, ensureReviewer } from "./auth";
 import { createAuditLog } from "./auditLog";
-import type { MutationCtx } from "./_generated/server";
+
 
 // ============================================
 // CONSTANTS
@@ -43,10 +43,7 @@ export const STATUS_TRANSITIONS: Record<MemberStatus, MemberStatus[]> = {
 export const getAvailableTransitions = query({
     args: { userId: v.id("users") },
     handler: async (ctx, args) => {
-        const requestor = await getViewer(ctx);
-        if (!requestor || (requestor.clearanceLevel ?? 0) < 3) {
-            throw new Error("Unauthorized");
-        }
+        await ensureReviewer(ctx);
 
         const user = await ctx.db.get(args.userId);
         if (!user) return { currentStatus: null, availableTransitions: [] };
@@ -71,11 +68,8 @@ export const getStatusHistory = query({
         if (!requestor) throw new Error("Unauthorized");
 
         // Allow viewing own history or if officer+
-        if (
-            requestor._id !== args.userId &&
-            (requestor.clearanceLevel ?? 0) < 3
-        ) {
-            throw new Error("Unauthorized");
+        if (requestor._id !== args.userId) {
+            await ensureReviewer(ctx);
         }
 
         const user = await ctx.db.get(args.userId);
@@ -130,10 +124,9 @@ export const changeStatus = mutation({
         exitReason: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
+        await ensureReviewer(ctx);
         const requestor = await getViewer(ctx);
-        if (!requestor || (requestor.clearanceLevel ?? 0) < 3) {
-            throw new Error("Unauthorized: Officer access required");
-        }
+        if (!requestor) throw new Error("Unauthorized");
 
         const user = await ctx.db.get(args.userId);
         if (!user) throw new Error("User not found");
@@ -171,29 +164,25 @@ export const changeStatus = mutation({
             profileUpdates.exitReason = args.exitReason || args.reason;
         }
 
-        // Handle role/clearance adjustments
+        // Handle role adjustments
         let roleUpdates: {
             systemRole?: string;
-            clearanceLevel?: number;
         } = {};
 
         // Automatic role adjustments based on status
         if (newStatus === "alumni" || newStatus === "suspended") {
             roleUpdates = {
                 systemRole: "guest",
-                clearanceLevel: 0,
             };
         } else if (newStatus === "active" && currentStatus === "candidate") {
             // Promotion from candidate to active
             roleUpdates = {
                 systemRole: "member",
-                clearanceLevel: 2,
             };
         } else if (newStatus === "probation" && currentStatus === "candidate") {
             // Provisional member
             roleUpdates = {
                 systemRole: "member",
-                clearanceLevel: 1,
             };
         }
 
@@ -282,7 +271,8 @@ export const requestLeave = mutation({
 
         // Create LOA request process
         // Note: This requires a stage to exist for LOA - create a simple one if needed
-        const loaStage = await ctx.db.query("stages").filter((q) =>
+        // Check if LOA stage exists (optional check)
+        await ctx.db.query("stages").filter((q) =>
             q.eq(q.field("type"), "loa_approval")
         ).first();
 
@@ -327,7 +317,7 @@ export const requestLeave = mutation({
         // Notify Talent Development team (officers+)
         const tdTeam = await ctx.db.query("users").collect();
         const tdOfficers = tdTeam.filter((u) =>
-            (u.clearanceLevel ?? 0) >= 4 && !u.isDeleted && u._id !== user._id
+            u.systemRole === 'admin' && !u.isDeleted && u._id !== user._id
         );
 
         for (const officer of tdOfficers.slice(0, 5)) { // Limit to first 5 execs
@@ -387,7 +377,7 @@ export const approveLeave = mutation({
 
         // Check if manager is authorized to approve
         const isManager = pendingLOA.approvers.includes(manager._id);
-        const isAdmin = (manager.clearanceLevel ?? 0) >= 4;
+        const isAdmin = manager.systemRole === 'admin';
 
         if (!isManager && !isAdmin) {
             throw new Error("You are not authorized to approve this request");
@@ -439,7 +429,7 @@ export const approveLeave = mutation({
         // Notify Talent Development
         const tdTeam = await ctx.db.query("users").collect();
         const tdOfficers = tdTeam.filter((u) =>
-            (u.clearanceLevel ?? 0) >= 4 && !u.isDeleted && u._id !== args.userId && u._id !== manager._id
+            u.systemRole === 'admin' && !u.isDeleted && u._id !== args.userId && u._id !== manager._id
         );
 
         for (const officer of tdOfficers.slice(0, 3)) {
@@ -495,7 +485,7 @@ export const denyLeave = mutation({
         }
 
         const isManager = pendingLOA.approvers.includes(manager._id);
-        const isAdmin = (manager.clearanceLevel ?? 0) >= 4;
+        const isAdmin = manager.systemRole === 'admin';
 
         if (!isManager && !isAdmin) {
             throw new Error("You are not authorized to deny this request");
@@ -562,7 +552,7 @@ export const getPendingLOARequests = query({
         });
 
         // If not admin, only show requests where viewer is approver
-        const isAdmin = (viewer.clearanceLevel ?? 0) >= 4;
+        const isAdmin = viewer.systemRole === 'admin';
 
         const filteredRequests = pendingRequests.filter((u) => {
             if (isAdmin) return true;
@@ -617,7 +607,7 @@ export const endLeave = mutation({
         // Notify Talent Development
         const tdTeam = await ctx.db.query("users").collect();
         const tdOfficers = tdTeam.filter((u) =>
-            (u.clearanceLevel ?? 0) >= 4 && !u.isDeleted && u._id !== user._id
+            u.systemRole === 'admin' && !u.isDeleted && u._id !== user._id
         );
 
         for (const officer of tdOfficers.slice(0, 3)) {

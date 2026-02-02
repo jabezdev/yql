@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { type BlockConfigProps, type ApplicantViewProps, type ReviewerViewProps } from "../registry";
 import { Calendar, MapPin, CheckCircle2, XCircle } from "lucide-react";
 
@@ -113,7 +113,7 @@ export const ReviewerView: React.FC<ReviewerViewProps> = ({ block, applicantValu
 };
 
 // --- Validation ---
-export const validate = (value: any, config: any) => {
+export const validate = (value: any, _config: any) => {
     if (!value || !value.status) return ["Please confirm your attendance."];
     return null;
 };

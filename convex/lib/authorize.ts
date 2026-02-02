@@ -71,8 +71,8 @@ export async function authorize(
         return { allowed: false, user: null, reason: "Not authenticated" };
     }
 
-    // System admin bypass - clearance level 5 has full access
-    if ((user.clearanceLevel ?? 0) >= 5) {
+    // System admin bypass
+    if (user.systemRole === 'admin') {
         return { allowed: true, user };
     }
 
@@ -193,7 +193,7 @@ export async function hasAccessToDepartment(
     if (!user) return false;
 
     // Admin has access to all departments
-    if ((user.clearanceLevel ?? 0) >= 4) return true;
+    if (user.systemRole === 'admin') return true;
 
     // Check if user belongs to this department
     const userDepartmentIds = getUserDepartmentIds(user);
@@ -211,7 +211,7 @@ export async function isOwnerOrAdmin(
     if (!user) return { allowed: false, user: null };
 
     const isOwner = user._id === ownerId;
-    const isAdmin = (user.clearanceLevel ?? 0) >= 4;
+    const isAdmin = user.systemRole === 'admin';
 
     return { allowed: isOwner || isAdmin, user };
 }
@@ -219,13 +219,13 @@ export async function isOwnerOrAdmin(
 /**
  * Quick clearance level check
  */
-export async function hasMinimumClearance(
+export async function hasRole(
     ctx: QueryCtx | MutationCtx,
-    minLevel: number
+    roles: string[]
 ): Promise<boolean> {
     const user = await getViewer(ctx);
     if (!user) return false;
-    return (user.clearanceLevel ?? 0) >= minLevel;
+    return roles.includes(user.systemRole || "");
 }
 
 // ============================================

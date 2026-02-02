@@ -7,25 +7,30 @@
    ============================================================================= */
 
 :root {
-    /* Brand Colors */
-    --color-light-blue: #3986c0;
-    --color-dark-blue: #396798;
-    --color-blue: #3d8ccb;
-    --color-blue-dark: #396799;
-    --color-yellow: #fed432;
-    --color-wine: #bc594f;
-    --color-gray: #97abc4;
-    --color-bg-light: #f5f6f8;
-
+    /* Brand Colors - Good Weather Theme */
+    --color-light-blue: #60a5fa;   /* Fresh Sky Blue */
+    --color-dark-blue: #2563eb;    /* Deep Ocean Blue */
+    --color-blue: #3b82f6;         /* Standard Blue */
+    --color-blue-dark: #1e40af;    /* Navy */
+    --color-yellow: #fcd34d;       /* Sunshine */
+    --color-wine: #ef4444;         /* Alert/Action */
+    --color-gray: #9ca3af;         /* Neutral Gray */
+    --color-green: #10b981;        /* Success */
+    
+    /* Backgrounds */
+    --color-bg-light: #f0f9ff;     /* Very light blue tint */
+    --color-bg: #ffffff;
+    --color-bg-subtle: #f8fafc;
+    --color-bg-muted: #e2e8f0;
+    
     /* Text Colors */
-    --color-text: #396799;
-    --color-text-muted: #97abc4;
-    --color-text-light: #bcccdc;
-    --color-bg: #FFFFFF;
-    --color-bg-subtle: #f5f6f8;
-    --color-bg-muted: #e8eef4;
-    --color-border: #d4e0ec;
-    --color-border-strong: #97abc4;
+    --color-text: #0f172a;         /* Slate 900 */
+    --color-text-muted: #64748b;   /* Slate 500 */
+    --color-text-light: #94a3b8;   /* Slate 400 */
+    
+    /* Borders */
+    --color-border: #e2e8f0;
+    --color-border-strong: #cbd5e1;
 
     /* Transition Timings */
     --transition-fast: 150ms;
@@ -39,6 +44,10 @@
     --radius-xl: 1rem;
     --radius-2xl: 1.5rem;
     --radius-full: 9999px;
+    
+    /* Shadows */
+    --shadow-soft: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    --shadow-glass: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
 }
 
 /* =============================================================================

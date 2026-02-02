@@ -1,9 +1,12 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation } from "./_generated/server";
-import { getViewer, ensureAdmin } from "./auth";
+import { mutation, query } from "./_generated/server";
+import { getViewer, ensureAdmin, ensureReviewer } from "./auth";
 import { createAuditLog } from "./auditLog";
-import { Id } from "./_generated/dataModel";
-import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import { z } from "zod";
+
+const reviewDataSchema = z.record(z.string(), z.any());
+
 
 // ============================================
 // CONSTANTS
@@ -32,10 +35,9 @@ export const REVIEW_STATUSES = [
 export const getAllCycles = query({
     args: { status: v.optional(v.string()) },
     handler: async (ctx, args) => {
+        await ensureReviewer(ctx);
         const viewer = await getViewer(ctx);
-        if (!viewer || (viewer.clearanceLevel ?? 0) < 3) {
-            throw new Error("Officer access required");
-        }
+        if (!viewer) throw new Error("Unauthorized");
 
         let cycles = await ctx.db.query("review_cycles").collect();
 
@@ -56,10 +58,9 @@ export const getAllCycles = query({
 export const getCycle = query({
     args: { cycleId: v.id("review_cycles") },
     handler: async (ctx, args) => {
+        await ensureReviewer(ctx);
         const viewer = await getViewer(ctx);
-        if (!viewer || (viewer.clearanceLevel ?? 0) < 3) {
-            throw new Error("Officer access required");
-        }
+        if (!viewer) throw new Error("Unauthorized");
 
         const cycle = await ctx.db.get(args.cycleId);
         if (!cycle) return null;
@@ -136,7 +137,7 @@ export const getMyPeerFeedback = query({
         if (!cycle) throw new Error("Cycle not found");
 
         // Only show feedback after cycle is completed (or for admins)
-        if (cycle.status !== "completed" && (viewer.clearanceLevel ?? 0) < 4) {
+        if (cycle.status !== "completed" && viewer.systemRole !== 'admin') {
             return { status: "pending", feedback: [] };
         }
 
@@ -169,10 +170,9 @@ export const getMyPeerFeedback = query({
 export const getTeamProgress = query({
     args: { cycleId: v.id("review_cycles") },
     handler: async (ctx, args) => {
+        await ensureReviewer(ctx);
         const viewer = await getViewer(ctx);
-        if (!viewer || (viewer.clearanceLevel ?? 0) < 3) {
-            throw new Error("Officer access required");
-        }
+        if (!viewer) throw new Error("Unauthorized");
 
         // Get manager's direct reports
         const directReports = await ctx.db
@@ -399,7 +399,7 @@ export const autoAssignPeerReviews = mutation({
         // Get all active members
         const users = await ctx.db.query("users").collect();
         const activeMembers = users.filter(
-            (u) => !u.isDeleted && u.profile?.status === "active" && (u.clearanceLevel ?? 0) >= 2
+            (u) => !u.isDeleted && u.profile?.status === "active" && u.systemRole !== "guest" && u.systemRole !== "candidate"
         );
 
         if (activeMembers.length < 3) {
@@ -483,6 +483,12 @@ export const submitPeerReview = mutation({
 
         if (assignment.status === "submitted") {
             throw new Error("Review already submitted");
+        }
+
+        // Validate data format
+        const parsed = reviewDataSchema.safeParse(args.data);
+        if (!parsed.success) {
+            throw new Error("Invalid review data format");
         }
 
         const cycle = await ctx.db.get(assignment.cycleId);

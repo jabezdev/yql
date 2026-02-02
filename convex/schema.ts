@@ -11,8 +11,8 @@ export default defineSchema({
         systemRole: v.optional(v.string()),
 
         // Hierarchy & Permissions
-        // 0=Guest, 1=Probation, 2=Member, 3=Officer, 4=Exec, 5=SystemOwner
-        clearanceLevel: v.optional(v.number()),
+        // Roles are defined in 'roles' table and linked via systemRole
+
 
         tokenIdentifier: v.optional(v.string()),
 
@@ -164,7 +164,7 @@ export default defineSchema({
             actions: v.array(v.string()), // ["read", "create", "update", "delete"]
             scope: v.optional(v.string()), // "own", "department", "all"
         }))),
-        allowedProcessTypes: v.array(v.string()), // "recruitment", "survey"
+        // allowedProcessTypes MOVED to programs table (Inversion of Control)
         defaultDashboardSlug: v.optional(v.string()),
         isSystemRole: v.optional(v.boolean()), // Prevent modification of core roles
     }).index("by_slug", ["slug"]),
@@ -189,6 +189,13 @@ export default defineSchema({
         config: v.any(), // JSON content (label, placeholder, etc.)
         version: v.optional(v.number()),
         parentId: v.optional(v.id("block_instances")), // Track origin of copied blocks
+
+        // Phase 5: Granular Block Access
+        roleAccess: v.optional(v.array(v.object({
+            roleSlug: v.string(),       // "guest", "member", "manager"
+            canView: v.boolean(),       // Visible to this role?
+            canEdit: v.optional(v.boolean()), // Can interact/edit?
+        }))),
     }),
 
     stage_templates: defineTable({
@@ -221,6 +228,15 @@ export default defineSchema({
         assignees: v.optional(v.array(v.string())),
         sourceTemplateId: v.optional(v.id("stage_templates")),
         originalStageId: v.optional(v.string()), // For migration tracking (the old string ID)
+
+        // Phase 4: Per-stage role visibility
+        roleAccess: v.optional(v.array(v.object({
+            roleSlug: v.string(),       // "guest", "member", "manager"
+            canView: v.boolean(),       // Can see stage content
+            canSubmit: v.boolean(),     // Can submit data for this stage
+            canApprove: v.boolean(),    // Can approve/reject at this stage
+        }))),
+
         // Soft Delete
         isDeleted: v.optional(v.boolean()),
         deletedAt: v.optional(v.number()),
@@ -229,18 +245,27 @@ export default defineSchema({
     programs: defineTable({
         name: v.string(), // e.g., "Batch 2026", "Q1 Performance Review"
         slug: v.string(), // e.g., "batch-2026"
+        description: v.optional(v.string()),
 
         // Program classification
-        programType: v.optional(v.string()), // "recruitment_cycle", "survey_campaign", etc.
+        programType: v.optional(v.string()), // "recruitment_cycle", "survey_campaign" - helpful for filtering but not strict logic
 
         isActive: v.boolean(),
         startDate: v.number(),
         endDate: v.optional(v.number()),
 
-        // Type-specific configuration (flexible based on programType)
-        // For recruitment: { openPositions: [...] }
-        // For surveys: { targetAudience: "all_members" }
-        // For performance: { reviewPeriod: "Q1 2026" }
+        // Dynamic Access Control (Inversion of Control)
+        allowStartBy: v.optional(v.array(v.string())), // Role slugs allowed to START this process (e.g. ["guest", "member"])
+
+        // Visibility & UI Config
+        // Map of roleSlug -> config object. 
+        // Example: { 
+        //   "guest": { "dashboardLocation": "main_card", "cardTitle": "Apply Now" },
+        //   "manager": { "dashboardLocation": "sidebar", "cardTitle": "Review Applications" }
+        // }
+        viewConfig: v.optional(v.any()),
+
+        // Type-specific configuration (flexible)
         config: v.optional(v.any()),
 
         stageIds: v.optional(v.array(v.id("stages"))), // Ordered list of stages
@@ -255,6 +280,15 @@ export default defineSchema({
             }))
         }))),
 
+        // Fine-grained access control per role
+        // Each entry defines what a role can do, with optional department scoping
+        accessControl: v.optional(v.array(v.object({
+            roleSlug: v.string(),             // "manager", "lead", "member"
+            departmentScope: v.optional(v.string()), // "own" | "all" | specific deptId
+            actions: v.array(v.string()),     // ["view", "approve", "comment", "start"]
+            stageVisibility: v.optional(v.array(v.string())), // Stage IDs this role can see
+        }))),
+
     })
         .index("by_slug", ["slug"])
         .index("by_active", ["isActive"])
@@ -267,6 +301,10 @@ export default defineSchema({
         type: v.string(), // "recruitment", "recommitment", "loa_request"
         programId: v.optional(v.id("programs")), // The Time Cycle this belongs to
 
+        // Department Scoping (Phase 3)
+        departmentId: v.optional(v.id("departments")), // Which department this process belongs to
+        createdFor: v.optional(v.id("users")),         // If created on behalf of another user (by manager)
+
         // State
         currentStageId: v.id("stages"),
         status: v.string(), // "in_progress", "approved", "rejected", "withdrawn"
@@ -278,7 +316,10 @@ export default defineSchema({
         // Soft delete
         isDeleted: v.optional(v.boolean()),
         deletedAt: v.optional(v.number()),
-    }).index("by_user", ["userId"]).index("by_type", ["type"]),
+    })
+        .index("by_user", ["userId"])
+        .index("by_type", ["type"])
+        .index("by_department", ["departmentId"]),
 
     reviews: defineTable({
         processId: v.id("processes"), // Replaces applicationId

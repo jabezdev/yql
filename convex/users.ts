@@ -48,7 +48,6 @@ export const storeUser = mutation({
             email: identity.email!,
             tokenIdentifier: identity.tokenIdentifier,
             systemRole: "guest",
-            clearanceLevel: 0,
             profile: {
                 positions: [],
                 status: "candidate", // generic status
@@ -79,7 +78,6 @@ export const createStaffMember = mutation({
         name: v.string(),
         title: v.optional(v.string()),
         departmentId: v.optional(v.id("departments")),
-        clearanceLevel: v.optional(v.number()), // Default 3 (Officer)
         systemRole: v.optional(v.string()), // Default "member"
     },
     handler: async (ctx, args) => {
@@ -103,7 +101,6 @@ export const createStaffMember = mutation({
             email: args.email,
             name: args.name,
             systemRole: args.systemRole || "member",
-            clearanceLevel: args.clearanceLevel ?? 3, // Default officer level
             profile: {
                 positions: args.title ? [{
                     title: args.title,
@@ -130,7 +127,7 @@ export const createStaffMember = mutation({
 });
 
 /**
- * Gets staff members with officer-level access (clearanceLevel >= 3).
+ * Gets staff members (Member+).
  * Can filter by department for scoped access.
  */
 export const getStaffMembers = query({
@@ -138,9 +135,17 @@ export const getStaffMembers = query({
     handler: async (ctx, args) => {
         await ensureAdmin(ctx);
 
-        // Get all users with clearanceLevel >= 3 (officers and above)
+        // Get all users
         const allUsers = await ctx.db.query("users").collect();
-        const staffMembers = allUsers.filter(u => (u.clearanceLevel ?? 0) >= 3 && !u.isDeleted);
+
+        // Filter: Exclude guests, candidates, alumni
+        const excludeRoles = ["guest", "candidate", "alumni", "probation"];
+
+        const staffMembers = allUsers.filter(u =>
+            u.systemRole &&
+            !excludeRoles.includes(u.systemRole) &&
+            !u.isDeleted
+        );
 
         if (args.departmentId) {
             // Filter by department membership
@@ -163,7 +168,12 @@ export const getUser = query({
 
         if (requestor._id === args.id) return requestor;
 
-        if ((requestor.clearanceLevel ?? 0) >= 3 || requestor.systemRole === "admin") {
+        // Allow specialized roles (like admin/manager) to view others
+        // We'll rely on explicit ensureAdmin for full access, or check strict permissions here
+        // For now, allow Admins and Managers to view profiles.
+
+        const systemRole = requestor.systemRole;
+        if (systemRole === 'admin' || systemRole === 'manager' || systemRole === 'lead') {
             const user = await ctx.db.get(args.id);
             if (!user || user.isDeleted) return null;
             return user;
@@ -207,7 +217,6 @@ export const onboardUser = mutation({
                 email: args.email,
                 name: args.name,
                 systemRole: "guest",
-                clearanceLevel: 0,
                 profile: { positions: [], status: "candidate", joinDate: Date.now() }
             });
 
