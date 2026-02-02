@@ -577,3 +577,266 @@ export const deleteAssignment = mutation({
         });
     },
 });
+
+// ... (previous content)
+
+/**
+ * Submit or update self review
+ */
+export const submitSelfReview = mutation({
+    args: {
+        cycleId: v.id("review_cycles"),
+        data: v.any(),
+        submit: v.boolean(), // true to submit, false to save draft
+    },
+    handler: async (ctx, args) => {
+        const viewer = await getViewer(ctx);
+        if (!viewer) throw new Error("Unauthorized");
+
+        const cycle = await ctx.db.get(args.cycleId);
+        if (!cycle || cycle.status !== "active") {
+            throw new Error("Review cycle is not active");
+        }
+
+        if (cycle.selfReviewDeadline && Date.now() > cycle.selfReviewDeadline) {
+            throw new Error("Self review deadline has passed");
+        }
+
+        const existing = await ctx.db
+            .query("self_reviews")
+            .withIndex("by_cycle_user", (q) => q.eq("cycleId", args.cycleId).eq("userId", viewer._id))
+            .first();
+
+        const status = args.submit ? "submitted" : "in_progress";
+        const submittedAt = args.submit ? Date.now() : undefined;
+
+        if (existing) {
+            if (existing.status === "submitted") {
+                throw new Error("Already submitted");
+            }
+            await ctx.db.patch(existing._id, {
+                data: args.data,
+                status,
+                submittedAt,
+            });
+        } else {
+            await ctx.db.insert("self_reviews", {
+                cycleId: args.cycleId,
+                userId: viewer._id,
+                data: args.data,
+                status,
+                submittedAt,
+            });
+        }
+
+        if (args.submit) {
+            await createAuditLog(ctx, {
+                userId: viewer._id,
+                action: "self_review.submit",
+                entityType: "review_cycles",
+                entityId: args.cycleId,
+            });
+        }
+    },
+});
+
+/**
+ * Submit or update manager review
+ */
+export const submitManagerReview = mutation({
+    args: {
+        cycleId: v.id("review_cycles"),
+        revieweeId: v.id("users"),
+        data: v.any(), // Private data
+        sharedData: v.optional(v.any()), // Shared data (can be empty initially)
+        rating: v.optional(v.number()),
+        submit: v.boolean(),
+    },
+    handler: async (ctx, args) => {
+        const viewer = await getViewer(ctx);
+        if (!viewer) throw new Error("Unauthorized");
+
+        // Verify manager relationship
+        const assignment = await ctx.db
+            .query("manager_assignments")
+            .withIndex("by_manager", (q) => q.eq("managerId", viewer._id))
+            .filter((q) => q.eq(q.field("userId"), args.revieweeId))
+            .first();
+
+        // Admins can also review
+        if (!assignment && viewer.systemRole !== 'admin') {
+            throw new Error("Not authorized to review this user");
+        }
+
+        const existing = await ctx.db
+            .query("manager_reviews")
+            .withIndex("by_cycle_reviewee", (q) => q.eq("cycleId", args.cycleId).eq("revieweeId", args.revieweeId))
+            .filter((q) => q.eq(q.field("reviewerId"), viewer._id))
+            .first();
+
+        const status = args.submit ? "submitted" : "in_progress";
+        const submittedAt = args.submit ? Date.now() : undefined;
+
+        if (existing) {
+            if (existing.status === "shared") {
+                throw new Error("Cannot edit after sharing");
+            }
+            await ctx.db.patch(existing._id, {
+                data: args.data,
+                sharedData: args.sharedData,
+                rating: args.rating,
+                status: existing.status === "submitted" && !args.submit ? "submitted" : status, // Don't revert to in_progress if already submitted unless specified
+                submittedAt: submittedAt ?? existing.submittedAt,
+            });
+        } else {
+            await ctx.db.insert("manager_reviews", {
+                cycleId: args.cycleId,
+                reviewerId: viewer._id,
+                revieweeId: args.revieweeId,
+                data: args.data,
+                sharedData: args.sharedData,
+                rating: args.rating,
+                status,
+                submittedAt,
+            });
+        }
+
+        if (args.submit) {
+            await createAuditLog(ctx, {
+                userId: viewer._id,
+                action: "manager_review.submit",
+                entityType: "review_cycles",
+                entityId: args.cycleId,
+                metadata: { revieweeId: args.revieweeId }
+            });
+        }
+    },
+});
+
+/**
+ * Share manager review with employee
+ */
+export const shareManagerReview = mutation({
+    args: {
+        cycleId: v.id("review_cycles"),
+        revieweeId: v.id("users"),
+    },
+    handler: async (ctx, args) => {
+        const viewer = await getViewer(ctx);
+        if (!viewer) throw new Error("Unauthorized");
+
+        const review = await ctx.db
+            .query("manager_reviews")
+            .withIndex("by_cycle_reviewee", (q) => q.eq("cycleId", args.cycleId).eq("revieweeId", args.revieweeId))
+            .filter((q) => q.eq(q.field("reviewerId"), viewer._id))
+            .first();
+
+        if (!review) throw new Error("Review not found");
+        if (review.status !== "submitted") throw new Error("Review must be submitted before sharing");
+
+        await ctx.db.patch(review._id, {
+            status: "shared",
+            sharedAt: Date.now(),
+        });
+
+        await createAuditLog(ctx, {
+            userId: viewer._id,
+            action: "manager_review.share",
+            entityType: "review_cycles",
+            entityId: args.cycleId,
+            metadata: { revieweeId: args.revieweeId }
+        });
+    },
+});
+
+
+/**
+ * Get performance summary (for user or manager)
+ */
+export const getPerformanceSummary = query({
+    args: {
+        userId: v.id("users"),
+        cycleId: v.id("review_cycles"),
+    },
+    handler: async (ctx, args) => {
+        const viewer = await getViewer(ctx);
+        if (!viewer) throw new Error("Unauthorized");
+
+        const isOwn = viewer._id === args.userId;
+
+        // Check permissions
+        let isManager = false;
+        if (!isOwn) {
+            const assignment = await ctx.db
+                .query("manager_assignments")
+                .withIndex("by_manager", (q) => q.eq("managerId", viewer._id))
+                .filter((q) => q.eq(q.field("userId"), args.userId))
+                .first();
+            isManager = !!assignment;
+        }
+
+        if (!isOwn && !isManager && viewer.systemRole !== 'admin') {
+            throw new Error("Unauthorized");
+        }
+
+        // Get reviews
+        const selfReview = await ctx.db
+            .query("self_reviews")
+            .withIndex("by_cycle_user", (q) => q.eq("cycleId", args.cycleId).eq("userId", args.userId))
+            .first();
+
+        const managerReview = await ctx.db
+            .query("manager_reviews")
+            .withIndex("by_cycle_reviewee", (q) => q.eq("cycleId", args.cycleId).eq("revieweeId", args.userId))
+            .first();
+
+        // Get peer feedback (anonymized if viewing own)
+        const peerReviews = await ctx.db
+            .query("peer_review_assignments")
+            .withIndex("by_reviewee", (q) => q.eq("revieweeId", args.userId))
+            .filter((q) => q.eq(q.field("cycleId"), args.cycleId))
+            .collect();
+
+        const submittedPeerReviews = peerReviews.filter(r => r.status === "submitted");
+
+        // Prepare response based on viewer
+        const response: any = {
+            selfReview, // Always visible (if exists)
+            peerReviews: [],
+            managerReview: null,
+        };
+
+        if (isOwn) {
+            // User sees manager review ONLY if shared
+            if (managerReview && managerReview.status === "shared") {
+                response.managerReview = {
+                    sharedData: managerReview.sharedData,
+                    rating: managerReview.rating, // assuming rating is shared
+                    sharedAt: managerReview.sharedAt
+                };
+            }
+            // User sees anonymized peer feedback if cycle is closed or allowed
+            const cycle = await ctx.db.get(args.cycleId);
+            if (cycle?.status === "completed") { // Or based on config
+                response.peerReviews = submittedPeerReviews.map((r, i) => ({
+                    id: `peer-${i + 1}`,
+                    data: r.data
+                }));
+            }
+        } else {
+            // Manager/Admin sees everything
+            response.managerReview = managerReview;
+            response.peerReviews = await Promise.all(submittedPeerReviews.map(async (r) => {
+                // Reveal reviewer name to manager? Usually yes.
+                const reviewer = await ctx.db.get(r.reviewerId);
+                return {
+                    reviewerName: reviewer?.name,
+                    data: r.data,
+                    submittedAt: r.submittedAt
+                };
+            }));
+        }
+
+        return response;
+    },
+});

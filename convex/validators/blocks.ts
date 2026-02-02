@@ -18,6 +18,9 @@ export const contentBlockConfigValidator = v.object({
     required: v.optional(v.boolean()),
     html: v.optional(v.string()),
     markdown: v.optional(v.string()),
+    // Enhanced for "Training Modules"
+    videoUrl: v.optional(v.string()), // Youtube/Vimeo embed
+    videoProvider: v.optional(v.string()),
 });
 
 // ============================================
@@ -142,6 +145,49 @@ export const decisionResponseConfigValidator = v.object({
     deadline: v.optional(v.string()),
 });
 
+export const departmentSelectorConfigValidator = v.object({
+    label: v.optional(v.string()),
+    required: v.optional(v.boolean()),
+    placeholder: v.optional(v.string()),
+    excludeDepartments: v.optional(v.array(v.string())), // Check logic in block
+    allowMultiple: v.optional(v.boolean()),
+});
+
+export const userProfileCardConfigValidator = v.object({
+    userIdField: v.optional(v.string()), // e.g. "userId" or path to data
+    fieldsToShow: v.optional(v.array(v.string())), // ["name", "email", "profile.status"]
+    showAvatar: v.optional(v.boolean()),
+});
+
+export const userSelectorConfigValidator = v.object({
+    label: v.optional(v.string()),
+    required: v.optional(v.boolean()),
+    placeholder: v.optional(v.string()),
+    allowedRoles: v.optional(v.array(v.string())),
+});
+
+export const goalEditorConfigValidator = v.object({
+    label: v.optional(v.string()),
+    required: v.optional(v.boolean()),
+    minGoals: v.optional(v.number()),
+    maxGoals: v.optional(v.number()),
+    cycleId: v.optional(v.string()), // Or dynamic
+});
+
+export const timesheetGridConfigValidator = v.object({
+    label: v.optional(v.string()),
+    required: v.optional(v.boolean()),
+    minHours: v.optional(v.number()),
+    maxHours: v.optional(v.number()),
+    projects: v.optional(v.array(v.string())),
+});
+
+export const shiftPickerConfigValidator = v.object({
+    label: v.optional(v.string()),
+    required: v.optional(v.boolean()),
+    programId: v.optional(v.string()), // To fetch events/shifts from
+});
+
 // ============================================
 // ACTION BLOCKS (Placeholders)
 // ============================================
@@ -231,6 +277,12 @@ export const BLOCK_CONFIG_VALIDATORS: Record<string, ReturnType<typeof v.object>
     decision_gate: decisionGateConfigValidator,
     auto_score: autoScoreConfigValidator,
     access_gate: accessGateConfigValidator,
+    department_selector: departmentSelectorConfigValidator,
+    user_selector: userSelectorConfigValidator,
+    goal_editor: goalEditorConfigValidator,
+    timesheet_grid: timesheetGridConfigValidator,
+    shift_picker: shiftPickerConfigValidator,
+    user_profile_card: userProfileCardConfigValidator,
 };
 
 /**

@@ -72,6 +72,7 @@ export default defineSchema({
         parentDepartmentId: v.optional(v.id("departments")), // For nested structures
         isActive: v.boolean(),
         order: v.optional(v.number()), // Display ordering
+        managerIds: v.optional(v.array(v.id("users"))), // Department leads/managers
 
         // Soft Delete
         isDeleted: v.optional(v.boolean()),
@@ -110,6 +111,17 @@ export default defineSchema({
         windowStart: v.number(), // Timestamp when window started
     })
         .index("by_user_action", ["userId", "action"]),
+
+    // ============================================
+    // SYSTEM SETTINGS
+    // ============================================
+
+    system_settings: defineTable({
+        key: v.string(),   // "maintenance_mode", "allow_guest_signup", "theme_config"
+        value: v.any(),    // Flexible value
+        updatedAt: v.number(),
+        updatedBy: v.optional(v.id("users")),
+    }).index("by_key", ["key"]),
 
     // ============================================
     // GDPR / DELETION REQUESTS
@@ -245,6 +257,7 @@ export default defineSchema({
     programs: defineTable({
         name: v.string(), // e.g., "Batch 2026", "Q1 Performance Review"
         slug: v.string(), // e.g., "batch-2026"
+        category: v.optional(v.string()), // "recruitment", "operations", "performance", "onboarding"
         description: v.optional(v.string()),
 
         // Program classification
@@ -333,22 +346,46 @@ export default defineSchema({
         .index("by_process", ["processId"])
         .index("by_stage_process", ["stageId", "processId"]),
 
-    events: defineTable({ // Renamed from interview_slots
-        programId: v.optional(v.id("programs")), // Renamed from schoolId/cohortId
-        blockId: v.id("block_instances"), // Link to the specific block instance (block.id)
-        hostId: v.optional(v.id("users")), // Renamed from reviewerId
+    // Generic Events (Shifts, Interviews, Meetings)
+    events: defineTable({
+        programId: v.optional(v.id("programs")),
+        blockId: v.optional(v.id("block_instances")), // Optional if standalone shift
+        hostId: v.optional(v.id("users")),
+        title: v.optional(v.string()), // Added for standalone shifts
+        description: v.optional(v.string()),
+        location: v.optional(v.string()),
         startTime: v.number(),
         endTime: v.number(),
-        maxAttendees: v.number(), // usually 1
-        attendees: v.array(v.id("users")), // Users who booked
+        maxAttendees: v.number(),
+        attendees: v.array(v.id("users")),
         status: v.string(), // "open", "full", "cancelled"
-        type: v.optional(v.string()), // "interview", "meeting"
+        type: v.optional(v.string()), // "interview", "shift", "meeting", "orientation"
         // Soft delete
         isDeleted: v.optional(v.boolean()),
         deletedAt: v.optional(v.number()),
     })
         .index("by_block", ["blockId"])
-        .index("by_start_time", ["startTime"]),
+        .index("by_start_time", ["startTime"])
+        .index("by_type", ["type"]),
+
+    timesheets: defineTable({
+        userId: v.id("users"),
+        shiftId: v.optional(v.id("events")), // Linked to specific shift
+        date: v.number(),
+        durationMinutes: v.number(),
+        activityDescription: v.string(),
+        status: v.string(), // "pending", "approved", "rejected"
+        approverId: v.optional(v.id("users")),
+        rejectionReason: v.optional(v.string()),
+        createdAt: v.number(),
+        updatedAt: v.number(),
+        // Soft delete
+        isDeleted: v.optional(v.boolean()),
+        deletedAt: v.optional(v.number()),
+    })
+        .index("by_user", ["userId"])
+        .index("by_status", ["status"])
+        .index("by_shift", ["shiftId"]),
 
     files: defineTable({
         storageId: v.string(), // The Convex Storage ID
@@ -401,6 +438,7 @@ export default defineSchema({
             includePeerReview: v.boolean(),
             includeManagerReview: v.boolean(),
             peerReviewsPerPerson: v.optional(v.number()), // How many peers review each person
+            groupingStrategy: v.optional(v.string()), // "same_department", "random", "manual"
         })),
     })
         .index("by_status", ["status"])
@@ -434,8 +472,39 @@ export default defineSchema({
         isDeleted: v.optional(v.boolean()),
         deletedAt: v.optional(v.number()),
     })
-        .index("by_user", ["userId"])
         .index("by_cycle", ["cycleId"])
+        .index("by_status", ["status"])
+        .index("by_user", ["userId"]),
+
+    self_reviews: defineTable({
+        cycleId: v.id("review_cycles"),
+        userId: v.id("users"),           // The reviewer (and reviewee)
+        status: v.string(),               // "in_progress", "submitted"
+        data: v.optional(v.any()),        // Review data
+        submittedAt: v.optional(v.number()),
+        // Soft delete
+        isDeleted: v.optional(v.boolean()),
+        deletedAt: v.optional(v.number()),
+    })
+        .index("by_cycle_user", ["cycleId", "userId"])
+        .index("by_status", ["status"]),
+
+    manager_reviews: defineTable({
+        cycleId: v.id("review_cycles"),
+        reviewerId: v.id("users"),        // The manager
+        revieweeId: v.id("users"),        // The direct report
+        status: v.string(),               // "in_progress", "submitted", "shared"
+        data: v.optional(v.any()),        // Private manager assessment
+        sharedData: v.optional(v.any()),  // Feedback shared with employee
+        rating: v.optional(v.number()),   // Numerical rating
+        submittedAt: v.optional(v.number()),
+        sharedAt: v.optional(v.number()), // When it was revealed to employee
+        // Soft delete
+        isDeleted: v.optional(v.boolean()),
+        deletedAt: v.optional(v.number()),
+    })
+        .index("by_cycle_reviewer", ["cycleId", "reviewerId"])
+        .index("by_cycle_reviewee", ["cycleId", "revieweeId"])
         .index("by_status", ["status"]),
 });
 

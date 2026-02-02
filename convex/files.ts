@@ -107,7 +107,7 @@ export const saveFile = mutation({
 
         if (!user) throw new Error("User not found");
 
-        await ctx.db.insert("files", {
+        const fileId = await ctx.db.insert("files", {
             storageId: args.storageId,
             userId: user._id,
             name: args.name,
@@ -115,6 +115,8 @@ export const saveFile = mutation({
             processId: args.processId,
             createdAt: Date.now(),
         });
+
+        return fileId;
     },
 });
 

@@ -19,7 +19,11 @@ import {
     Shield,
     Gavel,
     Calculator,
-    Lock
+    Lock,
+    Building,
+    UserPlus,
+    Target,
+    Clock
 } from "lucide-react";
 
 // --- Stage Types (Flow Containers) ---
@@ -45,6 +49,14 @@ export const BLOCK_TYPES = [
     { category: "Input", key: 'event_rsvp', label: 'Event RSVP', icon: Users, description: 'Register for live sessions.' },
     { category: "Input", key: 'quiz', label: 'Quiz / Assessment', icon: CheckSquare, description: 'Multiple choice, short answers.' },
     { category: "Input", key: 'coding_test', label: 'Coding Challenge', icon: XOctagon, description: 'Code editor and test cases.' },
+
+    // New HR Core Blocks
+    { category: "Input", key: 'department_selector', label: 'Department Selector', icon: Building, description: 'Select a department.' },
+    { category: "Input", key: 'user_selector', label: 'User Selector', icon: UserPlus, description: 'Select a user.' },
+    { category: "Input", key: 'goal_editor', label: 'Goal Editor', icon: Target, description: 'Define OKRs.' },
+    { category: "Input", key: 'timesheet_grid', label: 'Timesheet', icon: Clock, description: 'Weekly hours logging.' },
+    { category: "Input", key: 'shift_picker', label: 'Shift Picker', icon: Calendar, description: 'Select available shifts.' },
+
     { category: "Action", key: 'signature', label: 'E-Signature', icon: PenTool, description: 'Sign offer letters or agreements.' },
     { category: "Action", key: 'payment', label: 'Payment', icon: CreditCard, description: 'Stripe/PayPal processing.' },
     { category: "Action", key: 'checklist', label: 'Checklist', icon: ListTodo, description: 'Onboarding tasks tracking.' },

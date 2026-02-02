@@ -44,6 +44,23 @@ export const getMyBookings = query({
     },
 });
 
+export const getShifts = query({
+    args: { programId: v.optional(v.id("programs")) },
+    handler: async (ctx, args) => {
+        let q = ctx.db.query("events").withIndex("by_type", q => q.eq("type", "shift"));
+
+        const shifts = await q.collect();
+
+        // Filter by program if provided
+        // Also could filter by date (future only?) - for now return all active
+        const now = Date.now();
+
+        return shifts
+            .filter(s => !s.isDeleted && s.endTime > now && (!args.programId || s.programId === args.programId))
+            .sort((a, b) => a.startTime - b.startTime);
+    }
+});
+
 // --- Mutations ---
 
 export const createEvents = mutation({
@@ -98,6 +115,54 @@ export const createEvents = mutation({
 
         return createdEventIds;
     },
+});
+
+export const createShift = mutation({
+    args: {
+        title: v.string(),
+        description: v.optional(v.string()),
+        location: v.optional(v.string()),
+        startTime: v.number(),
+        endTime: v.number(),
+        maxAttendees: v.number(),
+        programId: v.optional(v.id("programs")),
+    },
+    handler: async (ctx, args) => {
+        const user = await getViewer(ctx);
+        if (!user) throw new Error("Unauthorized");
+
+        // Require staff/manager
+        await requireRateLimit(ctx, user._id, "event.create");
+
+        // Simple check for now
+        if (['guest', 'member'].includes(user.systemRole || "")) {
+            throw new Error("Unauthorized: Only staff/managers can create shifts");
+        }
+
+        const eventId = await ctx.db.insert("events", {
+            hostId: user._id,
+            title: args.title,
+            description: args.description,
+            location: args.location,
+            startTime: args.startTime,
+            endTime: args.endTime,
+            maxAttendees: args.maxAttendees,
+            programId: args.programId,
+            attendees: [],
+            status: "open",
+            type: "shift"
+        });
+
+        await createAuditLog(ctx, {
+            userId: user._id,
+            action: "shift.create",
+            entityType: "events",
+            entityId: eventId,
+            metadata: { title: args.title }
+        });
+
+        return eventId;
+    }
 });
 
 export const deleteEvent = mutation({

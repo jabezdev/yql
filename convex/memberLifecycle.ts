@@ -636,3 +636,139 @@ export const endLeave = mutation({
         return { success: true };
     },
 });
+
+// ... (previous content)
+
+/**
+ * Submit Resignation (Start Offboarding)
+ */
+export const submitResignation = mutation({
+    args: {
+        reason: v.string(),
+        intendedExitDate: v.number(),
+    },
+    handler: async (ctx, args) => {
+        const user = await getViewer(ctx);
+        if (!user) throw new Error("Unauthorized");
+
+        if (user.profile?.status === "alumni" || user.profile?.status === "candidate") {
+            throw new Error("Invalid status for resignation");
+        }
+
+        const now = Date.now();
+
+        // Check for existing offboarding process
+        const existing = await ctx.db
+            .query("processes")
+            .withIndex("by_user", (q) => q.eq("userId", user._id))
+            .filter((q) => q.eq(q.field("type"), "offboarding"))
+            .first();
+
+        if (existing && existing.status === "in_progress") {
+            throw new Error("You already have an offboarding process in progress");
+        }
+
+        // Create Offboarding Process
+        const processId = await ctx.db.insert("processes", {
+            userId: user._id,
+            type: "offboarding",
+            createdFor: user._id,
+            status: "in_progress",
+            // We assume a generic "Offboarding" stage exists or we use a placeholder
+            currentStageId: (await ctx.db.query("stages").first())?._id as any, // HACK
+            data: {
+                resignation: {
+                    reason: args.reason,
+                    intendedExitDate: args.intendedExitDate,
+                    submittedAt: now
+                },
+                steps: {
+                    exitInterview: { status: "pending" },
+                    assetReturn: { status: "pending" }
+                }
+            },
+            updatedAt: now,
+        });
+
+        // Notify Admins
+        const tdTeam = await ctx.db.query("users").collect();
+        const admins = tdTeam.filter((u) => u.systemRole === 'admin' && !u.isDeleted);
+
+        for (const admin of admins.slice(0, 3)) {
+            await ctx.db.insert("notifications", {
+                userId: admin._id,
+                type: "resignation",
+                title: "Resignation Submitted",
+                message: `${user.name} has submitted their resignation.`,
+                link: `/dashboard/admin/offboarding/${processId}`, // Mock link
+                isRead: false,
+                createdAt: now,
+            });
+        }
+
+        await createAuditLog(ctx, {
+            userId: user._id,
+            action: "offboarding.start",
+            entityType: "processes",
+            entityId: processId,
+        });
+
+        return processId;
+    },
+});
+
+/**
+ * Complete Offboarding (Finalize transition to Alumni)
+ */
+export const completeOffboarding = mutation({
+    args: {
+        processId: v.id("processes"),
+    },
+    handler: async (ctx, args) => {
+        const admin = await ensureAdmin(ctx);
+
+        const process = await ctx.db.get(args.processId);
+        if (!process) throw new Error("Process not found");
+        if (process.type !== "offboarding") throw new Error("Not an offboarding process");
+
+        const user = await ctx.db.get(process.userId);
+        if (!user) throw new Error("User not found");
+
+        const now = Date.now();
+
+        // Close process
+        await ctx.db.patch(args.processId, {
+            status: "completed",
+            updatedAt: now,
+        });
+
+        // Change user status to Alumni
+        // Reuse internal logic or call it directly if we refactored.
+        // For now, manual update similiar to changeStatus
+
+        const historyEntry = {
+            status: "alumni" as const,
+            changedAt: now,
+            changedBy: admin._id,
+            reason: "Offboarding completed",
+        };
+
+        await ctx.db.patch(process.userId, {
+            profile: {
+                ...user.profile!,
+                status: "alumni",
+                exitDate: now,
+                exitReason: process.data?.resignation?.reason ?? "Resigned",
+                statusHistory: [...(user.profile?.statusHistory || []), historyEntry]
+            },
+            systemRole: "guest", // Alumni have guest-like access but special view
+        });
+
+        await createAuditLog(ctx, {
+            userId: admin._id,
+            action: "offboarding.complete",
+            entityType: "users",
+            entityId: process.userId,
+        });
+    },
+});

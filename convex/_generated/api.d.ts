@@ -9,16 +9,20 @@
  */
 
 import type * as accessGate from "../accessGate.js";
+import type * as alumni from "../alumni.js";
 import type * as auditLog from "../auditLog.js";
 import type * as auth from "../auth.js";
 import type * as automations from "../automations.js";
 import type * as blocks from "../blocks.js";
+import type * as compliance from "../compliance.js";
+import type * as configuration from "../configuration.js";
 import type * as dashboards from "../dashboards.js";
 import type * as departments from "../departments.js";
 import type * as directory from "../directory.js";
 import type * as emails from "../emails.js";
 import type * as events from "../events.js";
 import type * as files from "../files.js";
+import type * as finance from "../finance.js";
 import type * as gdpr from "../gdpr.js";
 import type * as goals from "../goals.js";
 import type * as lib_authorize from "../lib/authorize.js";
@@ -33,13 +37,19 @@ import type * as notifications from "../notifications.js";
 import type * as performanceReviews from "../performanceReviews.js";
 import type * as processes from "../processes.js";
 import type * as programs from "../programs.js";
+import type * as promotions from "../promotions.js";
 import type * as reports from "../reports.js";
 import type * as reviews from "../reviews.js";
 import type * as roles from "../roles.js";
 import type * as seed from "../seed.js";
+import type * as seedOnboarding from "../seedOnboarding.js";
+import type * as seedShifts from "../seedShifts.js";
+import type * as settings from "../settings.js";
 import type * as stages from "../stages.js";
+import type * as timesheets from "../timesheets.js";
 import type * as users from "../users.js";
 import type * as validators_blocks from "../validators/blocks.js";
+import type * as verify from "../verify.js";
 
 import type {
   ApiFromModules,
@@ -49,16 +59,20 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   accessGate: typeof accessGate;
+  alumni: typeof alumni;
   auditLog: typeof auditLog;
   auth: typeof auth;
   automations: typeof automations;
   blocks: typeof blocks;
+  compliance: typeof compliance;
+  configuration: typeof configuration;
   dashboards: typeof dashboards;
   departments: typeof departments;
   directory: typeof directory;
   emails: typeof emails;
   events: typeof events;
   files: typeof files;
+  finance: typeof finance;
   gdpr: typeof gdpr;
   goals: typeof goals;
   "lib/authorize": typeof lib_authorize;
@@ -73,13 +87,19 @@ declare const fullApi: ApiFromModules<{
   performanceReviews: typeof performanceReviews;
   processes: typeof processes;
   programs: typeof programs;
+  promotions: typeof promotions;
   reports: typeof reports;
   reviews: typeof reviews;
   roles: typeof roles;
   seed: typeof seed;
+  seedOnboarding: typeof seedOnboarding;
+  seedShifts: typeof seedShifts;
+  settings: typeof settings;
   stages: typeof stages;
+  timesheets: typeof timesheets;
   users: typeof users;
   "validators/blocks": typeof validators_blocks;
+  verify: typeof verify;
 }>;
 
 /**

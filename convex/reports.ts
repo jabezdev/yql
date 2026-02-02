@@ -232,7 +232,7 @@ export const getReviewCycleStats = query({
     args: { cycleId: v.optional(v.id("review_cycles")) },
     handler: async (ctx, args) => {
         await ensureReviewer(ctx);
-        const viewer = await getViewer(ctx);
+        await getViewer(ctx);
 
         // If cycleId provided, get stats for that cycle; otherwise get overall
         if (args.cycleId) {

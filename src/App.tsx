@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom
 import { useConvexAuth, useQuery, useMutation } from "convex/react";
 import { Authenticated, Unauthenticated } from "convex/react";
 import { api } from "../convex/_generated/api";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 
 // Pages & Components
@@ -14,17 +14,49 @@ import RoleGuard from "./layouts/RoleGuard";
 
 // Unified Dashboard (replaces role-specific dashboards)
 import UnifiedDashboard from "./pages/UnifiedDashboard";
+import ApplicationPortal from "./pages/ApplicationPortal";
+import ProcessView from "./pages/ProcessView";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import SystemSettings from "./pages/admin/SystemSettings";
 import SettingsPage from "./pages/settings/SettingsPage";
 import AdminProgramList from "./pages/admin/programs/AdminProgramList";
 import ProgramDesigner from "./pages/admin/programs/ProgramDesigner";
+import ProgramSettings from "./pages/admin/programs/ProgramSettings";
+import DataIntegrityDashboard from "./pages/admin/DataIntegrityDashboard";
+import OrganizationDesigner from "./pages/admin/OrganizationDesigner";
+import RoleManagement from "./pages/admin/RoleManagement";
+import ShiftCalendar from "./pages/operations/ShiftCalendar";
+import GoalsPage from "./pages/operations/GoalsPage";
+import TimesheetLog from "./pages/operations/TimesheetLog";
+import PerformanceDashboard from "./pages/performance/PerformanceDashboard";
+import ReviewSubmissionForm from "./pages/performance/ReviewSubmissionForm";
+import PromotionProcess from "./pages/performance/PromotionProcess";
+import ResignationPage from "./pages/offboarding/ResignationPage";
+import ExitProcess from "./pages/offboarding/ExitProcess";
+import AlumniNetwork from "./pages/alumni/AlumniNetwork";
 
+import IncidentReport from "./pages/compliance/IncidentReport";
+import ComplianceDashboard from "./pages/admin/compliance/ComplianceDashboard";
+import ReimbursementForm from "./pages/finance/ReimbursementForm";
+
+
+
+import UserManagement from "./pages/admin/UserManagement";
+
+
+// Component to handle user syncing
 function UserIdSync() {
   const storeUser = useMutation(api.users.storeUser);
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
-    storeUser();
+    storeUser().catch(err => {
+      console.error("Failed to sync user:", err);
+      setError("Failed to create account. Please try again.");
+    });
   }, [storeUser]);
+
+  if (error) return <div className="text-red-500 text-sm">{error}</div>;
   return null;
 }
 
@@ -63,6 +95,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  const storeUser = useMutation(api.users.storeUser);
+  useEffect(() => {
+    if (storeUser) storeUser();
+  }, [storeUser]);
+
   return (
     <BrowserRouter>
       <Routes>
@@ -104,7 +141,29 @@ function App() {
             </RoleGuard>
           } />
 
+          <Route path="admin/integrity" element={
+            <RoleGuard allowedRoles={['admin']}>
+              <DataIntegrityDashboard />
+            </RoleGuard>
+          } />
 
+          <Route path="admin/org" element={
+            <RoleGuard allowedRoles={['admin']}>
+              <OrganizationDesigner />
+            </RoleGuard>
+          } />
+
+          <Route path="admin/roles" element={
+            <RoleGuard allowedRoles={['admin']}>
+              <RoleManagement />
+            </RoleGuard>
+          } />
+
+          <Route path="admin/users" element={
+            <RoleGuard allowedRoles={['admin']}>
+              <UserManagement />
+            </RoleGuard>
+          } />
           {/* Program Management */}
           <Route path="admin/programs" element={
             <RoleGuard allowedRoles={['admin']}>
@@ -117,11 +176,49 @@ function App() {
               <ProgramDesigner />
             </RoleGuard>
           } />
+
+          <Route path="admin/programs/:programId/settings" element={
+            <RoleGuard allowedRoles={['admin']}>
+              <ProgramSettings />
+            </RoleGuard>
+          } />
           <Route path="settings" element={<SettingsPage />} />
 
-          {/* Future: Process view route */}
-          {/* <Route path="program/:programId" element={<ProgramView />} /> */}
-          {/* <Route path="process/:processId" element={<ProcessView />} /> */}
+          {/* Operations & Engagement */}
+          <Route path="shifts" element={<ShiftCalendar />} />
+          <Route path="goals" element={<GoalsPage />} />
+          <Route path="timesheets" element={<TimesheetLog />} />
+
+
+
+          {/* Performance & Feedback */}
+          <Route path="performance" element={<PerformanceDashboard />} />
+          <Route path="performance/review/:type/:id" element={<ReviewSubmissionForm />} />
+          <Route path="performance/promote" element={
+            <RoleGuard allowedRoles={['manager', 'admin', 'lead']}>
+              <PromotionProcess />
+            </RoleGuard>
+          } />
+
+          {/* Offboarding & Alumni */}
+          <Route path="offboarding/resign" element={<ResignationPage />} />
+          <Route path="offboarding/exit" element={<ExitProcess />} />
+          <Route path="alumni" element={<AlumniNetwork />} />
+
+          {/* Compliance & Finance */}
+          <Route path="compliance/report" element={<IncidentReport />} />
+          <Route path="finance/reimbursements" element={<ReimbursementForm />} />
+
+          <Route path="admin/compliance" element={
+            <RoleGuard allowedRoles={['admin']}>
+              <ComplianceDashboard />
+            </RoleGuard>
+          } />
+
+
+          {/* Process & Program Routes */}
+          <Route path="program/:programId" element={<ApplicationPortal />} />
+          <Route path="process/:processId" element={<ProcessView />} />
         </Route>
 
         {/* Legacy role-based routes - redirect to unified dashboard */}

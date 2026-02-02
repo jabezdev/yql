@@ -247,22 +247,6 @@ export const submitStage = mutation({
         }
 
         // 2. Validate Data (Using Lib)
-        // We dynamic import here or assume it's available via top-level import
-        // Since we cannot dynamically import easily in Convex functions unless top-level, we added the import at top.
-        // But we need to update imports in processes.ts first! 
-        // For now, I'll inline the call assuming I will add the import in a separate step or included in this file update if I could.
-        // Wait, I can't add imports with replace_file_content easily if I don't target the top.
-        // I will trust that I will add the import in the next step.
-
-        // Actually, let's just implement the logic here for now if I can't easily add the import, 
-        // OR better: I will use a separate replace_file_content to add the import.
-
-        // Let's assume the import `import { validateStageSubmission, calculateNextStage } from "./lib/processEngine";` is there.
-        // Wait, I haven't added it yet. I should have done that. 
-        // I will simply use the logic I wrote in the lib, but I'll write it here for now to avoid breakage, 
-        // OR I will queue an import update. 
-
-        // Let we try to rely on the lib. I'll make sure to add the import in the NEXT tool call.
         validateStageSubmission(args.data, currentStageConfig);
 
         // 3. Save Data
@@ -282,7 +266,8 @@ export const submitStage = mutation({
         if (nextStageId) {
             updates.currentStageId = nextStageId as Doc<"stages">["_id"];
         } else {
-            // End of pipeline or stay on current
+            // End of pipeline
+            updates.status = "completed"; // Mark as completed
         }
 
         await ctx.db.patch(process._id, updates);
@@ -448,3 +433,58 @@ export const createProcess = mutation({
     }
 });
 
+/**
+ * Accepts an offer and promotes the user.
+ */
+export const acceptOffer = mutation({
+    args: {
+        processId: v.id("processes"),
+    },
+    handler: async (ctx, args) => {
+        const user = await getViewer(ctx);
+        if (!user) throw new Error("Unauthorized");
+
+        const process = await ctx.db.get(args.processId);
+        if (!process) throw new Error("Process not found");
+
+        if (process.userId !== user._id) throw new Error("Unauthorized");
+
+        // Status must be 'accepted' (which means Offer Extended in our flow)
+        if (process.status !== "accepted") {
+            throw new Error("No pending offer to accept.");
+        }
+
+        // 1. Update Process Status
+        await ctx.db.patch(process._id, {
+            status: "offer_accepted", // or "completed"
+            updatedAt: Date.now(),
+        });
+
+        // 2. Promote User (Create Staff Member)
+        // We need to know what role/department to assign.
+        // This should come from the Program configuration or the Process data.
+        // For now, we will assign a default 'member' role and 'unassigned' department if not specified.
+        // Ideally, Program has `defaultRole` or `departmentId` was set on process creation.
+
+
+
+        await ctx.db.patch(user._id, {
+            systemRole: "member", // Valid system role
+            // We could also call `createStaffMember` logic if we want to create a separate staff record, 
+            // but `users` table handles both. 
+            // Phase 1 `createStaffMember` mutation usually creates a user or updates them.
+            // Let's just update the user's systemRole here to "member" (Probationary).
+        });
+
+        // 3. Audit Log
+        await createAuditLog(ctx, {
+            userId: user._id,
+            action: "offer.accept",
+            entityType: "processes",
+            entityId: process._id,
+            changes: { before: { status: "accepted" }, after: { status: "offer_accepted" } }
+        });
+
+        return { success: true };
+    },
+});

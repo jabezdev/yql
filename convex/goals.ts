@@ -176,7 +176,7 @@ export const getCycleGoalStats = query({
     args: { cycleId: v.id("review_cycles") },
     handler: async (ctx, args) => {
         await ensureReviewer(ctx);
-        const viewer = await getViewer(ctx);
+        await getViewer(ctx);
 
         const goals = await ctx.db
             .query("goals")

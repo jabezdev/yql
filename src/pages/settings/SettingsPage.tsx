@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { Loader2, Save, Bell, Shield, User } from "lucide-react";
+import { Loader2, Save, Bell, Shield, User, Download } from "lucide-react";
+import { Button } from "../../components/ui/Button";
 
 export default function SettingsPage() {
     const user = useQuery(api.users.getMe);
@@ -10,6 +11,8 @@ export default function SettingsPage() {
     const [isSaving, setIsSaving] = useState(false);
     const [notificationFreq, setNotificationFreq] = useState("daily");
     const [privacyLevel, setPrivacyLevel] = useState("members_only");
+
+    const exportData = useMutation(api.compliance.exportMyData);
 
     // Initialize state from user data once loaded
     // Note: in a real app, use useEffect or better form handling to sync state
@@ -36,6 +39,25 @@ export default function SettingsPage() {
         } catch (error) {
             console.error(error);
             setIsSaving(false);
+        }
+    };
+
+
+    const handleExport = async () => {
+        if (!confirm("Download your personal data?")) return;
+        try {
+            const json = await exportData({ format: "json" });
+            // Trigger download
+            const blob = new Blob([json], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `my-data-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error(error);
+            alert("Failed to export data.");
         }
     };
 
@@ -138,6 +160,23 @@ export default function SettingsPage() {
                                 ))}
                             </div>
                         </div>
+                    </div>
+                </section>
+
+                {/* Data Export Section (GDPR) */}
+                <section className="bg-white rounded-2xl p-6 shadow-soft border border-brand-border/50">
+                    <div className="flex items-center gap-3 mb-6 border-b border-brand-border/50 pb-4">
+                        <Download className="text-gray-500" />
+                        <h2 className="text-xl font-bold text-brand-text">Data Export</h2>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="font-semibold text-brand-text">Download Your Data</h3>
+                            <p className="text-sm text-brand-textMuted">Get a copy of your personal data and history.</p>
+                        </div>
+                        <Button variant="outline" onClick={handleExport}>
+                            Request Export
+                        </Button>
                     </div>
                 </section>
 

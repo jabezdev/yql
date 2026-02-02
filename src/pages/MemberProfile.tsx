@@ -17,7 +17,7 @@ export default function MemberProfile() {
         );
     }
 
-    const { name, email, systemRole, clearanceLevel, profile } = user;
+    const { name, email, systemRole, profile } = user;
     const positions = profile?.positions || [];
     const status = profile?.status || "Unknown";
     const joinDate = profile?.joinDate ? new Date(profile.joinDate).toLocaleDateString() : "N/A";
@@ -39,7 +39,7 @@ export default function MemberProfile() {
                                 {status}
                             </span>
                             <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-600 border border-blue-100">
-                                Tier {clearanceLevel ?? 0}
+                                Global
                             </span>
                         </div>
                     </div>
@@ -85,7 +85,7 @@ export default function MemberProfile() {
                         </div>
                         <div className="flex justify-between border-b border-gray-100 pb-2">
                             <span className="text-gray-600">Clearance Level</span>
-                            <span className="font-medium">Level {clearanceLevel ?? 0}</span>
+                            <span className="font-medium">Level {systemRole === 'admin' ? 5 : systemRole === 'lead' ? 4 : systemRole === 'manager' ? 3 : 1}</span>
                         </div>
                         <div className="flex justify-between pb-2">
                             <div className="flex items-center gap-2 text-gray-600">

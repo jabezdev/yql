@@ -7,7 +7,12 @@ import {
     LogOut,
     Menu,
     X,
-    Shield
+    Shield,
+    Calendar,
+    Target,
+    Clock,
+    Star,
+    GraduationCap
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "convex/react";
@@ -43,6 +48,36 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             path: "/dashboard/admin",
             icon: Shield,
             roles: ["admin"]
+        },
+
+        // Operations & Engagement
+        {
+            label: "Shifts",
+            path: "/dashboard/shifts",
+            icon: Calendar,
+        },
+        {
+            label: "Goals",
+            path: "/dashboard/goals",
+            icon: Target,
+        },
+        {
+            label: "Timesheets",
+            path: "/dashboard/timesheets",
+            icon: Clock,
+        },
+
+        // Performance
+        {
+            label: "Performance",
+            path: "/dashboard/performance",
+            icon: Star,
+        },
+
+        {
+            label: "Alumni",
+            path: "/dashboard/alumni",
+            icon: GraduationCap,
         },
 
         // Settings - accessible to all

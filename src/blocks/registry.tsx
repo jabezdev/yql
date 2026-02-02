@@ -17,6 +17,12 @@ import * as DecisionGate from "./internal/decision_gate";
 import * as AutoScore from "./internal/auto_score";
 import * as AccessGate from "./internal/access_gate";
 import * as VideoResponse from "./inputs/video_response";
+// New Blocks
+import * as DepartmentSelector from "./inputs/department_selector";
+import * as UserSelector from "./inputs/user_selector";
+import * as GoalEditor from "./inputs/goal_editor";
+import * as TimesheetGrid from "./inputs/timesheet_grid";
+import * as ShiftPicker from "./inputs/shift_picker";
 import * as Placeholder from "./common/placeholder";
 
 // ============================================
@@ -219,6 +225,48 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
         ReviewerView: VideoResponse.ReviewerView,
         validate: VideoResponse.validate
     },
+    // New HR Blocks
+    department_selector: {
+        type: 'department_selector',
+        title: 'Department Selector',
+        ConfigEditor: DepartmentSelector.ConfigEditor,
+        ParticipantView: DepartmentSelector.ParticipantView,
+        ReviewerView: DepartmentSelector.ReviewerView,
+        validate: DepartmentSelector.validate
+    },
+    user_selector: {
+        type: 'user_selector',
+        title: 'User Selector',
+        ConfigEditor: UserSelector.ConfigEditor,
+        ParticipantView: UserSelector.ParticipantView,
+        ReviewerView: UserSelector.ReviewerView,
+        validate: UserSelector.validate
+    },
+    goal_editor: {
+        type: 'goal_editor',
+        title: 'Goal Editor',
+        ConfigEditor: GoalEditor.ConfigEditor,
+        ParticipantView: GoalEditor.ParticipantView,
+        ReviewerView: GoalEditor.ReviewerView,
+        validate: GoalEditor.validate
+    },
+    timesheet_grid: {
+        type: 'timesheet_grid',
+        title: 'Timesheet (Weekly)',
+        ConfigEditor: TimesheetGrid.ConfigEditor,
+        ParticipantView: TimesheetGrid.ParticipantView,
+        ReviewerView: TimesheetGrid.ReviewerView,
+        validate: TimesheetGrid.validate
+    },
+    shift_picker: {
+        type: 'shift_picker',
+        title: 'Shift Picker',
+        ConfigEditor: ShiftPicker.ConfigEditor,
+        ParticipantView: ShiftPicker.ParticipantView,
+        ReviewerView: ShiftPicker.ReviewerView,
+        validate: ShiftPicker.validate
+    },
+
     // Placeholders for the rest
     signature: { type: 'signature', title: 'signature', ...Placeholder },
     payment: { type: 'payment', title: 'payment', ...Placeholder },

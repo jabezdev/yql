@@ -1,6 +1,6 @@
 import type { ReactNode, ButtonHTMLAttributes, AnchorHTMLAttributes } from 'react';
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'white' | 'geometric-primary' | 'geometric-secondary';
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'white' | 'geometric-primary' | 'geometric-secondary' | 'outline' | 'destructive';
 type ButtonSize = 'sm' | 'md' | 'lg';
 
 interface BaseButtonProps {
@@ -38,6 +38,10 @@ const variantStyles: Record<ButtonVariant, string> = {
         'bg-brand-blueDark text-white font-bold hover:bg-brand-darkBlue shadow-lg hover:shadow-xl hover:-translate-y-1 rounded-tl-2xl rounded-br-2xl border-2 border-transparent',
     'geometric-secondary':
         'bg-white text-brand-blueDark font-bold border-2 border-brand-blueDark hover:bg-brand-blueDark hover:text-white shadow-sm hover:shadow-md rounded-tl-2xl rounded-br-2xl',
+    outline:
+        'bg-white text-gray-900 font-medium border border-gray-300 hover:bg-gray-50 hover:border-gray-400 rounded-lg',
+    destructive:
+        'bg-red-600 text-white font-medium hover:bg-red-700 rounded-lg',
 };
 
 const sizeStyles: Record<ButtonSize, string> = {

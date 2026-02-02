@@ -51,9 +51,17 @@ export function validateStageSubmission(data: any, stageConfig: Doc<"stages">) {
     }
 
     // 3. Block-based Validation
-    // Future expansion for blockIds
+    // 3. Block-based Validation
     if (stageConfig.blockIds && stageConfig.blockIds.length > 0) {
-        // Placeholder
+        // If blocks are passed in variants or context, we could validate.
+        // For now, we rely on `config.requiredFields` which can be synced with blocks.
+        if (config.requiredFields && Array.isArray(config.requiredFields)) {
+            for (const fieldId of config.requiredFields) {
+                if (!data[fieldId]) {
+                    throw new Error(`Field '${fieldId}' is required.`);
+                }
+            }
+        }
     }
 
     return true;
@@ -70,11 +78,39 @@ export function calculateNextStage(
 ): string | null {
 
     const currentIndex = pipeline.findIndex(p => p._id === currentStageId || p.originalStageId === currentStageId);
-
     if (currentIndex === -1) return null;
 
-    // Future: Add branching logic here based on submissionData (e.g. if decision === 'reject')
+    const currentStage = pipeline[currentIndex];
+    const config = currentStage.config || {};
+
+    // Check for explicit routing rules
+    if (config.routingRules && Array.isArray(config.routingRules)) {
+        for (const rule of config.routingRules) {
+            // rule: { condition: { field, op, value }, targetStageId }
+            if (evaluateCondition(rule.condition, _submissionData)) {
+                // Find target stage in pipeline
+                // We assume target is in the pipeline.
+                const target = pipeline.find(p => p._id === rule.targetStageId || p.originalStageId === rule.targetStageId);
+                if (target) return target._id;
+            }
+        }
+    }
 
     const nextStage = pipeline[currentIndex + 1];
     return nextStage ? nextStage._id : null;
+}
+
+function evaluateCondition(condition: any, data: any): boolean {
+    if (!condition) return true;
+    const value = data[condition.field];
+
+    switch (condition.op) {
+        case "eq": return value === condition.value;
+        case "neq": return value !== condition.value;
+        case "gt": return value > condition.value;
+        case "lt": return value < condition.value;
+        case "contains": return Array.isArray(value) && value.includes(condition.value);
+        case "exists": return value !== undefined && value !== null;
+        default: return value === condition.value;
+    }
 }
