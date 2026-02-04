@@ -7,6 +7,22 @@ Instead of writing 50 different "Forms" for Recruitment, Leave, Onboarding, etc.
 
 **Key Principle**: *Code the tool builder, not the tool.*
 
+### 🧠 The "Engine-First" Ethos
+
+To maintain this flexibility, future developers must adhere to this decision framework:
+
+> **The Golden Rule**: As you build features, rigorously ask: *"Can I do this by just configuring a Program?"* Only write code if the answer is strictly **No**.
+
+#### Decision Matrix
+| Requirement | Approach | Why? |
+| :--- | :--- | :--- |
+| **"We need a new Onboarding Flow with 5 steps"** | ✅ **Configure** | The Engine already handles stages, inputs, and transitions. |
+| **"We need to send an email when X happens"** | ✅ **Configure** | Use the `AutomationDesigner` to hook into the event bus. |
+| **"We need a totally new way to visualize the Org Chart"** | 🛠️ **Code** | The current Engine UI doesn't support custom visualizations. |
+| **"We need a new input type (e.g. Signature Pad)"** | 🛠️ **Extend Engine** | Build a new `Block` component, then **Configure** it in the program. |
+
+**Resist the urge to hardcode.** Hardcoding solves the problem *today* but breaks the platform *tomorrow*.
+
 ---
 
 ## 🏗 Tech Stack

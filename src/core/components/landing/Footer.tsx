@@ -9,7 +9,7 @@ export default function Footer() {
             <Container className="mb-12">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-12">
                     {/* Brand */}
-                    <div className="flex flex-col items-start text-left max-w-xl">
+                    <div className="flex flex-col items-center text-center md:items-start md:text-left max-w-xl">
                         <img src="/YQL_LOGO_WHITE.svg" alt="YQL Logo" className="h-32 w-auto mb-6" />
                         <h2 className="text-2xl md:text-3xl font-bold text-white tracking-tight mb-2">
                             Young Quantum Leaders Program
@@ -20,10 +20,10 @@ export default function Footer() {
                     </div>
 
                     {/* Links */}
-                    <div className="flex flex-col gap-4 text-white/80 mt-4 md:mt-0">
+                    <div className="flex flex-col items-center md:items-start gap-4 text-white/80 mt-4 md:mt-0">
                         <a href="mailto:hr@qcsp.ph" className="flex items-center gap-3 hover:text-white transition-colors">
                             <Mail className="w-5 h-5" />
-                            <span>hr@qcsp.ph</span>
+                            <span>yql@qcsp.ph</span>
                         </a>
                         <a href="https://qcsp.ph" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 hover:text-white transition-colors">
                             <Globe className="w-5 h-5" />
