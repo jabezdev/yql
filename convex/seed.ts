@@ -1,7 +1,7 @@
 import { mutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 
-import { DEFAULT_ROLES } from "./roles";
+import { DEFAULT_ROLES } from "./core/roles";
 import type { Id } from "./_generated/dataModel";
 
 // ============================================
@@ -121,7 +121,23 @@ async function seedProgram(ctx: MutationCtx) {
             slug: "batch-2026",
             isActive: true,
             startDate: Date.now(),
-            stageIds: []
+            stageIds: [],
+            // Add default automation for robustness demonstration
+            automations: [
+                {
+                    trigger: "offer_accepted",
+                    actions: [
+                        {
+                            type: "update_role",
+                            payload: { systemRole: "member" }
+                        },
+                        {
+                            type: "update_status",
+                            payload: { status: "active" }
+                        }
+                    ]
+                }
+            ]
         });
         console.log("Created Program:", programId);
     }

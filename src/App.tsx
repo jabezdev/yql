@@ -6,47 +6,48 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 
 // Pages & Components
-import LandingPage from "./pages/LandingPage";
-import LoginPage from "./pages/auth/LoginPage";
-import RegisterPage from "./pages/auth/RegisterPage";
-import DashboardLayout from "./layouts/DashboardLayout";
-import RoleGuard from "./layouts/RoleGuard";
+import LandingPage from "./domains/ops/landing/LandingPage";
+import LoginPage from "./domains/users/auth/LoginPage";
+import RegisterPage from "./domains/users/auth/RegisterPage";
+import DashboardLayout from "./core/layouts/DashboardLayout";
+import RoleGuard from "./core/layouts/RoleGuard";
 
 // Unified Dashboard (replaces role-specific dashboards)
-import UnifiedDashboard from "./pages/UnifiedDashboard";
-import ApplicationPortal from "./pages/ApplicationPortal";
-import ProcessView from "./pages/ProcessView";
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import SystemSettings from "./pages/admin/SystemSettings";
-import SettingsPage from "./pages/settings/SettingsPage";
-import AdminProgramList from "./pages/admin/programs/AdminProgramList";
-import ProgramDesigner from "./pages/admin/programs/ProgramDesigner";
-import ProgramSettings from "./pages/admin/programs/ProgramSettings";
-import DataIntegrityDashboard from "./pages/admin/DataIntegrityDashboard";
-import OrganizationDesigner from "./pages/admin/OrganizationDesigner";
-import RoleManagement from "./pages/admin/RoleManagement";
-import ShiftCalendar from "./pages/operations/ShiftCalendar";
-import GoalsPage from "./pages/operations/GoalsPage";
-import TimesheetLog from "./pages/operations/TimesheetLog";
-import PerformanceDashboard from "./pages/performance/PerformanceDashboard";
-import ReviewSubmissionForm from "./pages/performance/ReviewSubmissionForm";
-import PromotionProcess from "./pages/performance/PromotionProcess";
-import ResignationPage from "./pages/offboarding/ResignationPage";
-import ExitProcess from "./pages/offboarding/ExitProcess";
-import AlumniNetwork from "./pages/alumni/AlumniNetwork";
+import UnifiedDashboard from "./domains/ops/dashboard/UnifiedDashboard";
+import ApplicationPortal from "./engine/views/ApplicationPortal";
+import ProcessView from "./engine/views/ProcessView";
+import AdminDashboard from "./domains/admin/AdminDashboard";
+import SystemSettings from "./domains/admin/SystemSettings";
+import SettingsPage from "./domains/users/settings/SettingsPage";
+import AdminProgramList from "./domains/admin/programs/AdminProgramList";
+import ProgramDesigner from "./domains/admin/programs/ProgramDesigner";
+import ProgramSettings from "./domains/admin/programs/ProgramSettings";
+import DataIntegrityDashboard from "./domains/admin/DataIntegrityDashboard";
+import OrganizationDesigner from "./domains/admin/OrganizationDesigner";
+import RoleManagement from "./domains/admin/RoleManagement";
+import ShiftsPage from "./domains/ops/shifts/ShiftsPage";
+// Specialized Modules
+import GoalsPage from "./domains/hr/goals/GoalsPage";
+import TimesheetsPage from "./domains/hr/timesheets/TimesheetsPage";
+import PerformanceDashboard from "./domains/hr/performance/PerformanceDashboard";
+import ReviewSubmissionForm from "./domains/hr/performance/ReviewSubmissionForm";
+import PromotionProcess from "./domains/hr/performance/PromotionProcess";
+import ResignationPage from "./domains/hr/offboarding/ResignationPage";
+import ExitProcess from "./domains/hr/offboarding/ExitProcess";
+import AlumniNetwork from "./domains/hr/alumni/AlumniNetwork";
 
-import IncidentReport from "./pages/compliance/IncidentReport";
-import ComplianceDashboard from "./pages/admin/compliance/ComplianceDashboard";
-import ReimbursementForm from "./pages/finance/ReimbursementForm";
+import IncidentReport from "./domains/compliance/IncidentReport";
+import ComplianceDashboard from "./domains/admin/compliance/ComplianceDashboard";
+import ReimbursementForm from "./domains/ops/finance/ReimbursementForm";
 
 
 
-import UserManagement from "./pages/admin/UserManagement";
+import UserManagement from "./domains/admin/UserManagement";
 
 
 // Component to handle user syncing
 function UserIdSync() {
-  const storeUser = useMutation(api.users.storeUser);
+  const storeUser = useMutation(api.core.users.storeUser);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -63,7 +64,7 @@ function UserIdSync() {
 // Protected Route wrapper
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useConvexAuth();
-  const user = useQuery(api.users.getMe);
+  const user = useQuery(api.core.users.getMe);
 
   // 1. Clerk Loading or Convex Query Loading
   if (user === undefined) {
@@ -95,10 +96,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
-  const storeUser = useMutation(api.users.storeUser);
-  useEffect(() => {
-    if (storeUser) storeUser();
-  }, [storeUser]);
+
 
   return (
     <BrowserRouter>
@@ -185,9 +183,9 @@ function App() {
           <Route path="settings" element={<SettingsPage />} />
 
           {/* Operations & Engagement */}
-          <Route path="shifts" element={<ShiftCalendar />} />
+          <Route path="shifts" element={<ShiftsPage />} />
           <Route path="goals" element={<GoalsPage />} />
-          <Route path="timesheets" element={<TimesheetLog />} />
+          <Route path="timesheets" element={<TimesheetsPage />} />
 
 
 

@@ -8,7 +8,7 @@
 
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { getViewer } from "../auth";
+import { getViewer } from "../core/auth";
 
 // ============================================
 // TYPES
