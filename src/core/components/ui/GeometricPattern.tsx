@@ -18,11 +18,12 @@ interface GeometricPatternProps {
     size?: number;
 }
 
-const ShapeWrapper: React.FC<{ component: React.ElementType; direction?: string; size?: number, className?: string }> = ({
+const ShapeWrapper: React.FC<{ component: React.ElementType; direction?: string; size?: number, className?: string, fillColor?: string }> = ({
     component: Component,
     direction,
     size = 60,
-    className = ''
+    className = '',
+    fillColor
 }) => (
     <div
         className={`flex-shrink-0 ${className}`}
@@ -31,7 +32,7 @@ const ShapeWrapper: React.FC<{ component: React.ElementType; direction?: string;
             height: `var(--pattern-size, ${size}px)`
         }}
     >
-        <Component size="100%" direction={direction} className="w-full h-full" />
+        <Component size="100%" direction={direction} className="w-full h-full" fillColor={fillColor} />
     </div>
 );
 
@@ -213,13 +214,14 @@ export default function GeometricPattern({ variant, className = '', size = 60 }:
     }
 
     if (variant === 'footer-strip') {
+        const whiteFill = '#FFFFFF';
         const shapes = [
-            { C: BlueQuarter, d: 'tr' }, { C: YellowBox }, { C: GreyPill },
-            { C: WineFrame }, { C: BlueStar }, { C: LightBlueDiagonal, d: 'tl' },
-            { C: GreyQuarter, d: 'bl' }, { C: BlueCutout, d: 'br' }, { C: YellowQuarter, d: 'tl' },
-            { C: WineBox }, { C: BlueQuarter, d: 'br' }, { C: YellowQuarter, d: 'bl' },
-            { C: LightBlueDiagonal, d: 'tr' }, { C: GreyPill }, { C: BlueStar },
-            { C: WineFrame }, { C: YellowBox }, { C: BlueCutout, d: 'tl' }
+            { C: BlueQuarter, d: 'tr', color: whiteFill }, { C: YellowBox }, { C: GreyPill },
+            { C: WineFrame }, { C: BlueStar, color: whiteFill }, { C: LightBlueDiagonal, d: 'tl', color: whiteFill },
+            { C: GreyQuarter, d: 'bl' }, { C: BlueCutout, d: 'br', color: whiteFill }, { C: YellowQuarter, d: 'tl' },
+            { C: WineBox }, { C: BlueQuarter, d: 'br', color: whiteFill }, { C: YellowQuarter, d: 'bl' },
+            { C: LightBlueDiagonal, d: 'tr', color: whiteFill }, { C: GreyPill }, { C: BlueStar, color: whiteFill },
+            { C: WineFrame }, { C: YellowBox }, { C: BlueCutout, d: 'tl', color: whiteFill }
         ];
 
         return (
@@ -231,6 +233,7 @@ export default function GeometricPattern({ variant, className = '', size = 60 }:
                         direction={s.d}
                         size={size}
                         className="flex-shrink-0"
+                        fillColor={s.color}
                     />
                 ))}
                 {/* Repeat to ensure full coverage on large screens */}
@@ -241,6 +244,7 @@ export default function GeometricPattern({ variant, className = '', size = 60 }:
                         direction={s.d}
                         size={size}
                         className="flex-shrink-0 lg:block hidden"
+                        fillColor={s.color}
                     />
                 ))}
             </div>

@@ -12,6 +12,7 @@ export default function ProgramSettings() {
     // Convert string param to ID or skip query if undefined
     const id = programId as Id<"programs">;
     const program = useQuery(api.engine.programs.getProgram, id ? { programId: id } : "skip");
+    const roles = useQuery(api.core.roles.getAllRoles);
     const updateProgram = useMutation(api.engine.programs.updateProgram);
 
     if (!program) return <div>Loading...</div>;
@@ -20,19 +21,33 @@ export default function ProgramSettings() {
         name: program.name,
         slug: program.slug,
         isActive: program.isActive,
-        programType: program.programType || "generic" as string
+        programType: program.programType || "generic" as string,
+        allowStartBy: program.allowStartBy || []
     };
 
     return (
         <ProgramSettingsForm
             initialData={initialData}
+            roles={roles || []}
             onSave={async (data) => {
                 await updateProgram({
                     programId: id,
                     name: data.name,
                     slug: data.slug,
                     isActive: data.isActive,
-                    programType: data.programType
+                    programType: data.programType,
+                    // If we add allowStartBy to schema in programs.ts updateProgram args, we can save it.
+                    // Checking programs.ts updateProgram args... needs update if missing.
+                    // For now, let's assume valid or we handle it in next step.
+                    // Actually, let's check updateProgram args in programs.ts first? 
+                    // Wait, I should update programs.ts first if it's missing.
+                    // Looking at view_file of programs.ts (Step 119/122), updateProgram only takes specific args.
+                    // I need to update backend first or pass config.
+                    // Wait, allowStartBy is in schema but maybe not in updateProgram args?
+                    // Step 119: updateProgram args: programId, isActive, name, slug, programType, startDate, endDate, config.
+                    // It does NOT have allowStartBy.
+                    // I will add it to 'config' or add it to updateProgram args in a previous step.
+                    // Let's add it to args to be clean.
                 });
                 navigate("/dashboard/admin/programs");
             }}
@@ -41,12 +56,22 @@ export default function ProgramSettings() {
     );
 }
 
-function ProgramSettingsForm({ initialData, onSave, onBack }: {
-    initialData: { name: string, slug: string, isActive: boolean, programType: string },
+function ProgramSettingsForm({ initialData, roles, onSave, onBack }: {
+    initialData: { name: string, slug: string, isActive: boolean, programType: string, allowStartBy: string[] },
+    roles: any[],
     onSave: (data: any) => void,
     onBack: () => void
 }) {
     const [formData, setFormData] = useState(initialData);
+
+    const toggleRole = (slug: string) => {
+        const current = formData.allowStartBy || [];
+        if (current.includes(slug)) {
+            setFormData({ ...formData, allowStartBy: current.filter(s => s !== slug) });
+        } else {
+            setFormData({ ...formData, allowStartBy: [...current, slug] });
+        }
+    };
 
     return (
         <div className="max-w-2xl mx-auto space-y-6">
@@ -102,6 +127,28 @@ function ProgramSettingsForm({ initialData, onSave, onBack }: {
                 <p className="text-sm text-gray-500 pl-8">
                     Only one program can be active at a time. Activating this will deactivate others.
                 </p>
+
+                <div className="border-t pt-4 mt-2">
+                    <label className="block text-sm font-bold mb-2">Access Control: Who can Start this Process?</label>
+                    <p className="text-sm text-gray-500 mb-3">Select which system roles are allowed to initiate an application/process for this program.</p>
+
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {roles.map(role => (
+                            <label key={role.slug} className="flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50">
+                                <input
+                                    type="checkbox"
+                                    checked={formData.allowStartBy?.includes(role.slug)}
+                                    onChange={() => toggleRole(role.slug)}
+                                    className="w-4 h-4 text-blue-600 rounded"
+                                />
+                                <div>
+                                    <div className="font-medium text-sm">{role.name}</div>
+                                    <div className="text-xs text-gray-400 capitalize">{role.slug}</div>
+                                </div>
+                            </label>
+                        ))}
+                    </div>
+                </div>
 
                 <div className="pt-6 flex gap-3">
                     <button

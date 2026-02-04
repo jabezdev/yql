@@ -14,12 +14,16 @@ export const ParticipantView = ({ block, value, onChange, readOnly }: ApplicantV
     const [signed, setSigned] = useState(value?.signed || false);
     const [name, setName] = useState(value?.name || "");
 
+    // Only update internal state if external value changes significantly (reset)
+    // We avoid doing this for every keystroke to prevent feedback loops, 
+    // effectively treating this as an uncontrolled component with a default value
     useEffect(() => {
-        if (value) {
-            setSigned(value.signed);
-            setName(value.name);
+        if (value && (value.signed !== signed || value.name !== name)) {
+            // Only sync if strictly needed (e.g. form reset), but be careful of loops
+            if (value.signed !== signed) setSigned(value.signed);
+            if (value.name !== name) setName(value.name);
         }
-    }, [value]);
+    }, [value?.signed, value?.name]); // Specific dependencies to avoid overly broad updates
 
     const handleCheck = (checked: boolean) => {
         setSigned(checked);

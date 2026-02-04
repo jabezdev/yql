@@ -17,8 +17,8 @@ export default function Navbar() {
             className="fixed w-full z-50 h-[72px] flex items-center bg-white border-b-4 border-brand-blueDark transition-all duration-300"
         >
             <Container className="flex justify-between items-center w-full">
-                <a href="#" className="text-sm md:text-xl font-bold text-brand-blueDark">
-                    Young Quantum Leaders Program
+                <a href="#" className="flex items-center gap-2">
+                    <img src="/YQL_LOGO.svg" alt="YQL Logo" className="h-10 w-auto" />
                 </a>
 
                 {/* Desktop Menu */}

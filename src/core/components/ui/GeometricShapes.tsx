@@ -9,14 +9,14 @@ const COLORS = BrandColors;
 /**
  * Blue Star: Dark blue 4-point star created by 4 light blue quarter circles
  */
-export const BlueStar: React.FC<ShapeProps> = ({ size = 100, className = '' }) => (
+export const BlueStar: React.FC<ShapeProps> = ({ size = 100, className = '', fillColor }) => (
     <svg
         width={size}
         height={size}
         viewBox="0 0 100 100"
         className={className}
     >
-        <rect width="100" height="100" fill={COLORS.darkBlue} />
+        <rect width="100" height="100" fill={fillColor || COLORS.darkBlue} />
         {/* TL */}
         <path d="M 0 50 A 50 50 0 0 0 50 0 L 0 0 Z" fill={COLORS.lightBlue} />
         {/* TR */}
@@ -109,6 +109,7 @@ export const LightBlueDiagonal: React.FC<QuarterCircleProps> = ({
     size = 100,
     direction = 'br',
     className = '',
+    fillColor,
 }) => {
     // Direction determines which corner the blue triangle points to
     const paths: Record<string, string> = {
@@ -125,7 +126,7 @@ export const LightBlueDiagonal: React.FC<QuarterCircleProps> = ({
             viewBox="0 0 100 100"
             className={className}
         >
-            <path d={paths[direction]} fill={COLORS.blue} />
+            <path d={paths[direction]} fill={fillColor || COLORS.blue} />
         </svg>
     );
 };
@@ -186,6 +187,7 @@ export const BlueCutout: React.FC<QuarterCircleProps> = ({
     size = 100,
     direction = 'br',
     className = '',
+    fillColor,
 }) => {
     // The shape has: dark blue background, quarter circle cutout, diagonal line in cutout
     const cutoutPaths: Record<string, { cutout: string; diagonal: string }> = {
@@ -216,13 +218,13 @@ export const BlueCutout: React.FC<QuarterCircleProps> = ({
             viewBox="0 0 100 100"
             className={className}
         >
-            <path d={cutout} fill={COLORS.blueDark} fillRule="evenodd" />
+            <path d={cutout} fill={fillColor || COLORS.blueDark} fillRule="evenodd" />
             <line
                 x1={diagonal.split(' ')[0].replace('M', '').split(',')[0] || (diagonal.includes('M 0 0') ? 0 : diagonal.includes('M 100 0') ? 100 : diagonal.includes('M 0 100') ? 0 : 100)}
                 y1={diagonal.includes('M 0 0') || diagonal.includes('M 100 0') ? 0 : 100}
                 x2={diagonal.includes('L 100 100') || diagonal.includes('L 100 0') ? 100 : 0}
                 y2={diagonal.includes('L 100 100') || diagonal.includes('L 0 100') ? 100 : 0}
-                stroke={COLORS.blueDark}
+                stroke={fillColor || COLORS.blueDark}
                 strokeWidth="3"
             />
         </svg>
@@ -236,6 +238,7 @@ export const BlueQuarter: React.FC<QuarterCircleProps> = ({
     size = 100,
     direction = 'br',
     className = '',
+    fillColor
 }) => {
     const paths: Record<string, string> = {
         tl: 'M 100 0 A 100 100 0 0 1 0 100 L 0 0 Z',
@@ -251,7 +254,7 @@ export const BlueQuarter: React.FC<QuarterCircleProps> = ({
             viewBox="0 0 100 100"
             className={className}
         >
-            <path d={paths[direction]} fill={COLORS.blueDark} />
+            <path d={paths[direction]} fill={fillColor || COLORS.blueDark} />
         </svg>
     );
 };

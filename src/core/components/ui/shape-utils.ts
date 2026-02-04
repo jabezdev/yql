@@ -1,6 +1,7 @@
 export interface ShapeProps {
     size?: number | string;
     className?: string;
+    fillColor?: string;
 }
 
 export interface QuarterCircleProps extends ShapeProps {

@@ -104,9 +104,16 @@ We moved away from hardcoded "Side Effects" (e.g., `if (accepted) user.role = me
 Security is handled at three levels:
 
 1.  **System Role** (`users.systemRole`):
-    -   `admin`: God mode.
-    -   `guest`: Public access.
-    -   `member`: Basic internal access.
+    *Defined in the `roles` table. Determines global permissions.*
+    -   `guest`: Applicant/Public.
+    -   `contributor`: Non-member helper/volunteer.
+    -   `alumni`: Former member.
+    -   `member`: Standard active member.
+    -   `manager`: Operational lead (Squad Lead).
+    -   `lead`: Strategic lead (Dept Head/Team Lead).
+    -   `admin`: System owner (God mode).
+    
+    *implementation Note*: These are not hardcoded Enums. They are seeded in the DB. You can add more roles via the `roles` table, but these 7 are the system defaults.
 
 2.  **Context Role** (Program-Level):
     -   Defined in `Program.accessControl`.

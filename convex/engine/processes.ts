@@ -1,7 +1,9 @@
 import { v } from "convex/values";
+import { zStageSubmission } from "../lib/validators";
 import { mutation, query } from "../_generated/server";
 import { internal } from "../_generated/api";
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
+
 import { getViewer, ensureAdmin, ensureReviewer } from "../core/auth";
 import { createAuditLog } from "../core/auditLog";
 import { requireRateLimit } from "../lib/rateLimit";
@@ -56,59 +58,80 @@ export const getProcess = query({
 });
 
 /**
- * Gets all processes (Admin/Officer only).
+ * Gets all processes (Admin/Officer only) with pagination.
  * Filters based on program viewConfig visibility.
  */
-export const getAllProcesses = query({
+export const getProcessesPaginated = query({
     args: {
-        type: v.optional(v.string())
+        type: v.optional(v.string()),
+        paginationOpts: v.any(), // PaginationOptions
     },
     handler: async (ctx, args) => {
         // Require at least officer/staff level
         await ensureReviewer(ctx);
-        const user = await getViewer(ctx); // Re-fetch to satisfy type (or ensureReviewer return user)
+        const user = await getViewer(ctx);
 
         if (!user) throw new Error("Unauthorized");
 
         const roleSlug = user.systemRole || "guest";
         const isAdmin = user.systemRole === 'admin';
 
-        let processes;
+        let querySource;
+
         if (args.type) {
-            processes = await ctx.db
-                .query("processes")
-                .withIndex("by_type", q => q.eq("type", args.type!))
-                .collect();
+            querySource = ctx.db.query("processes").withIndex("by_type", q => q.eq("type", args.type!));
         } else {
-            processes = await ctx.db.query("processes").collect();
+            querySource = ctx.db.query("processes");
         }
 
-        // Filter deleted + check viewConfig visibility
-        const visibleProcesses = [];
-        for (const p of processes) {
-            if (p.isDeleted) continue;
+        // Optimization: Filter by Program Visibility purely in DB if possible
+        // to avoid "empty pages" and N+1 queries.
+        if (isAdmin) {
+            querySource = querySource.filter(q => q.neq(q.field("isDeleted"), true));
+        } else {
+            // 1. Fetch all programs (small dataset, usually < 50)
+            const allPrograms = await ctx.db.query("programs").collect();
 
-            // Admin sees all
-            if (isAdmin) {
-                visibleProcesses.push(p);
-                continue;
-            }
+            // 2. Determine which mapped IDs should be excluded or included
+            const visibleProgramIds: Id<"programs">[] = [];
 
-            // Check program viewConfig
-            if (p.programId) {
-                const program = await ctx.db.get(p.programId);
-                if (program?.viewConfig) {
+            for (const program of allPrograms) {
+                let isVisible = true;
+                if (program.viewConfig) {
                     const roleConfig = program.viewConfig[roleSlug];
                     if (roleConfig && roleConfig.visible === false) {
-                        continue; // Skip - not visible to this role
+                        isVisible = false;
                     }
+                }
+                if (isVisible) {
+                    visibleProgramIds.push(program._id);
                 }
             }
 
-            visibleProcesses.push(p);
+            // 3. Apply Filter
+            // Must combine "not deleted" AND "visible program" logic
+
+            querySource = querySource.filter(q => {
+                const notDeleted = q.neq(q.field("isDeleted"), true);
+                const isOrphan = q.eq(q.field("programId"), undefined);
+
+                if (visibleProgramIds.length === 0) {
+                    return q.and(notDeleted, isOrphan);
+                }
+
+                const checks = visibleProgramIds.map(id => q.eq(q.field("programId"), id));
+
+                // q.or accepts varargs, spread the checks
+                return q.and(
+                    notDeleted,
+                    q.or(isOrphan, ...checks)
+                );
+            });
         }
 
-        return visibleProcesses;
+        const result = await querySource.paginate(args.paginationOpts);
+
+        return result;
     },
 });
 
@@ -246,7 +269,12 @@ export const submitStage = mutation({
             throw new Error(`Stage mismatch. You are trying to submit to ${args.stageId} but process is at ${process.currentStageId}`);
         }
 
-        // 2. Validate Data (Using Lib)
+        // 2. Validate Data (Using Lib & Zod)
+        try {
+            zStageSubmission.parse(args.data);
+        } catch (e: any) {
+            throw new Error(`Invalid submission data format: ${e.message}`);
+        }
         validateStageSubmission(args.data, currentStageConfig);
 
         // 3. Save Data

@@ -104,6 +104,7 @@ export const updateProgram = mutation({
                 payload: v.any() // { template: "...", role: "member" }
             }))
         }))),
+        allowStartBy: v.optional(v.array(v.string())), // Role slugs allowed to START this process
     },
     handler: async (ctx, args) => {
         const admin = await ensureAdmin(ctx);
