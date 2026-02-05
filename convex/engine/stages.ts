@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import { ensureAdmin } from "../core/auth";
+import { isAdmin } from "../core/constants";
 
 /**
  * Creates a reusable stage template.
@@ -249,7 +250,7 @@ export const getVisibleProgramStages = query({
         if (!user) return [];
 
         const roleSlug = user.systemRole || "guest";
-        const isAdmin = user.systemRole === 'admin';
+        const isAdminUser = isAdmin(user.systemRole);
 
         const program = await ctx.db.get(args.programId);
         if (!program) return [];
@@ -262,7 +263,7 @@ export const getVisibleProgramStages = query({
         const activeStages = stages.filter(s => s !== null && !s.isDeleted);
 
         // Admin sees all with full access
-        if (isAdmin) {
+        if (isAdminUser) {
             return activeStages.map(stage => ({
                 stage,
                 access: { canView: true, canSubmit: true, canApprove: true },

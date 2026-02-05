@@ -1,6 +1,9 @@
 import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { isStaffRole } from "./accessControl";
+import { isAdmin } from "./constants";
+import { generateUuid } from "../engine/utils";
 
 // =====================================
 // UPLOAD LIMITS (Security)
@@ -114,6 +117,7 @@ export const saveFile = mutation({
             type: args.type,
             processId: args.processId,
             createdAt: Date.now(),
+            uuid: generateUuid(),
         });
 
         return fileId;
@@ -143,7 +147,7 @@ export const getFileUrl = query({
         if (!file || file.isDeleted) return null;
 
         const isOwner = file.userId === user._id;
-        const isAdminOrReviewer = ['admin', 'manager', 'lead', 'officer'].includes(user.systemRole || "");
+        const isAdminOrReviewer = isStaffRole(user.systemRole);
 
         // If file metadata is missing (legacy uploads?), fallback to strict admin check or just allow if we want to be loose for legacy.
         // For new system: strict.
@@ -184,7 +188,7 @@ export const getFileMetadata = query({
         if (!file || file.isDeleted) return null;
 
         const isOwner = file.userId === user._id;
-        const isAdminOrReviewer = ['admin', 'manager', 'lead', 'officer'].includes(user.systemRole || "");
+        const isAdminOrReviewer = isStaffRole(user.systemRole);
 
         if (!isOwner && !isAdminOrReviewer) return null;
 
@@ -217,9 +221,9 @@ export const deleteFile = mutation({
         if (!file || file.isDeleted) throw new Error("File not found");
 
         const isOwner = file.userId === user._id;
-        const isAdmin = user.systemRole === 'admin';
+        const isAdminUser = isAdmin(user.systemRole);
 
-        if (!isOwner && !isAdmin) throw new Error("Unauthorized to delete this file");
+        if (!isOwner && !isAdminUser) throw new Error("Unauthorized to delete this file");
 
         await ctx.db.patch(file._id, {
             isDeleted: true,

@@ -22,12 +22,13 @@ interface SidebarLink {
     label: string;
     path: string;
     icon: React.ElementType;
-    permission?: string;
-    roles?: string[];
+    roles?: string[];         // Exact role match (any of)
+    minimumRole?: string;     // Hierarchy-based (>= this level)
+    requireActive?: boolean;  // Requires HR_STATUS = active
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-    const { role, hasPermission } = usePermissions();
+    const { role, hrStatus, hasMinRole, isBlocked } = usePermissions();
     const { signOut } = useClerk();
     const user = useQuery(api.core.users.getMe);
     const location = useLocation();
@@ -89,8 +90,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     ];
 
     const filteredLinks = links.filter(link => {
+        // Block access for blocked users except Settings
+        if (isBlocked && link.path !== '/dashboard/settings') return false;
+        // Check exact role match
         if (link.roles && !link.roles.includes(role)) return false;
-        if (link.permission && !hasPermission(link.permission)) return false;
+        // Check minimum role (hierarchy)
+        if (link.minimumRole && !hasMinRole(link.minimumRole)) return false;
+        // Check active status requirement
+        if (link.requireActive && hrStatus !== 'active') return false;
         return true;
     });
 

@@ -1,5 +1,10 @@
 
 import type { QueryCtx, MutationCtx } from "../_generated/server";
+import { isAdmin, isStaffRole } from "./constants";
+
+// ============================================
+// CORE AUTH
+// ============================================
 
 export async function getViewer(ctx: QueryCtx | MutationCtx) {
     const identity = await ctx.auth.getUserIdentity();
@@ -27,38 +32,24 @@ export async function getViewer(ctx: QueryCtx | MutationCtx) {
     return null;
 }
 
-/**
- * Ensures user has Admin access.
- * Checks for 'system.manage_configuration' permission or 'admin' role slug.
- */
+/** Ensures user has Admin access. */
 export async function ensureAdmin(ctx: QueryCtx | MutationCtx) {
     const user = await getViewer(ctx);
     if (!user) {
         throw new Error("Unauthenticated");
     }
 
-    if (user.systemRole === 'admin') return user;
+    if (isAdmin(user.systemRole)) return user;
 
-    // Fallback: Check specific permission if not explicitly admin slug
-    // We need to fetch the role to check permissions
     if (user.systemRole) {
-        const role = await ctx.db
-            .query("roles")
-            .withIndex("by_slug", q => q.eq("slug", user.systemRole!))
-            .first();
-
-        if (role && role.uiPermissions.includes("system.manage_configuration")) {
-            return user;
-        }
+        // For now, strict check:
+        return isAdmin(user.systemRole) ? user : null;
     }
 
     throw new Error("Forbidden: Admin access required");
 }
 
-/**
- * Ensures user has Staff/Officer access.
- * Checks for 'dashboard.view_member_portal' which implies basic staff/member access.
- */
+/** Ensures user has Staff/Officer access. */
 export async function ensureReviewer(ctx: QueryCtx | MutationCtx) {
     const user = await getViewer(ctx);
     if (!user) {
@@ -66,20 +57,11 @@ export async function ensureReviewer(ctx: QueryCtx | MutationCtx) {
     }
 
     // Admins always have access
-    if (user.systemRole === 'admin') return user;
+    if (isAdmin(user.systemRole)) return user;
 
     if (user.systemRole) {
-        const role = await ctx.db
-            .query("roles")
-            .withIndex("by_slug", q => q.eq("slug", user.systemRole!))
-            .first();
-
-        // Check for basic staff permission (e.g. viewing programs or member portal)
-        // Adjust this permission based on what defines a "Reviewer/Officer" in your system
-        if (role && (
-            role.uiPermissions.includes("dashboard.view_programs") ||
-            role.uiPermissions.includes("dashboard.view_member_portal")
-        )) {
+        // Staff/Reviewer access = Manager or above
+        if (isStaffRole(user.systemRole)) {
             return user;
         }
     }
@@ -87,5 +69,4 @@ export async function ensureReviewer(ctx: QueryCtx | MutationCtx) {
     throw new Error("Forbidden: Staff access required");
 }
 
-// Deprecated/No-op functions for compatibility if necessary, or just remove.
-// Removed hashPassword, verifyPassword, createSession
+

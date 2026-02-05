@@ -4,7 +4,9 @@ import type { MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { getViewer } from "./auth";
 import { api } from "../_generated/api";
-import { requireRateLimit } from "../lib/rateLimit";
+import { requireRateLimit } from "./rateLimit";
+import { hasMinimumRole, SYSTEM_ROLES } from "./constants";
+import { generateUuid } from "../engine/utils";
 
 // ============================================
 // NOTIFICATION TYPES
@@ -109,13 +111,11 @@ export const createNotification = mutation({
         const requestor = await getViewer(ctx);
         if (!requestor) throw new Error("Unauthorized");
 
-        // Check if authorized (Admin, Manager, Lead, Officer)
-        // Simplest: Check if systemRole is NOT guest/candidate
-        const isStaff = requestor.systemRole &&
-            ['admin', 'manager', 'lead', 'officer', 'member'].includes(requestor.systemRole);
+        // Check if authorized (at least member-level role)
+        const isAuthorized = hasMinimumRole(requestor.systemRole, SYSTEM_ROLES.MEMBER);
 
-        if (!isStaff && requestor.systemRole !== 'admin') {
-            throw new Error("Unauthorized");
+        if (!isAuthorized) {
+            throw new Error("Unauthorized: Member access required");
         }
 
         // Rate limiting check
@@ -125,6 +125,7 @@ export const createNotification = mutation({
             ...args,
             isRead: false,
             createdAt: Date.now(),
+            uuid: generateUuid(),
         });
 
         // TODO: Trigger email if user preferences allow
@@ -171,6 +172,7 @@ export const systemNotify = internalMutation({
             relatedEntityId: args.relatedEntityId,
             isRead: false,
             createdAt: Date.now(),
+            uuid: generateUuid(),
         });
 
         // Check email preferences
@@ -316,6 +318,7 @@ export async function notifyProcessUpdate(
         relatedEntityId: processId,
         isRead: false,
         createdAt: Date.now(),
+        uuid: generateUuid(),
     });
 }
 
@@ -339,6 +342,7 @@ export async function notifyStatusChange(
         relatedEntityId: userId,
         isRead: false,
         createdAt: Date.now(),
+        uuid: generateUuid(),
     });
 }
 

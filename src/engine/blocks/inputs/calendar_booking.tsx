@@ -49,11 +49,11 @@ export const ConfigEditor: React.FC<BlockConfigProps> = ({ config, onChange }) =
 export const ParticipantView: React.FC<ApplicantViewProps> = ({ block, onChange }) => {
     const { config } = block;
 
-    const slots = useQuery(api.domains.ops.events.getEventsForBlock, { blockId: block._id }) || [];
+    const slots = useQuery(api.engine.events.getEventsForBlock, { blockId: block._id }) || [];
 
-    const myBookings = useQuery(api.domains.ops.events.getMyBookings, { blockId: block._id });
-    const bookSlot = useMutation(api.domains.ops.events.bookEvent);
-    const cancelBooking = useMutation(api.domains.ops.events.cancelBooking);
+    const myBookings = useQuery(api.engine.events.getMyBookings, { blockId: block._id });
+    const bookSlot = useMutation(api.engine.events.bookEvent);
+    const cancelBooking = useMutation(api.engine.events.cancelBooking);
 
     const handleBook = async (eventId: any) => {
         await bookSlot({ eventId });
@@ -123,10 +123,10 @@ export const ParticipantView: React.FC<ApplicantViewProps> = ({ block, onChange 
 export const ReviewerView: React.FC<ReviewerViewProps> = ({ block, isEditable }) => {
 
     const { config } = block;
-    const createEvents = useMutation(api.domains.ops.events.createEvents);
+    const createEvents = useMutation(api.engine.events.createEvents);
 
-    const slots = useQuery(api.domains.ops.events.getEventsForBlock, { blockId: block._id }) || [];
-    const deleteEvent = useMutation(api.domains.ops.events.deleteEvent);
+    const slots = useQuery(api.engine.events.getEventsForBlock, { blockId: block._id }) || [];
+    const deleteEvent = useMutation(api.engine.events.deleteEvent);
 
     const [newDate, setNewDate] = useState("");
     const [newTime, setNewTime] = useState("");

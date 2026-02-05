@@ -23,7 +23,8 @@ import {
     Building,
     UserPlus,
     Target,
-    Clock
+    Clock,
+    Activity
 } from "lucide-react";
 
 // --- Stage Types (Flow Containers) ---
@@ -68,6 +69,12 @@ export const BLOCK_TYPES = [
     { category: "Internal", key: 'decision_gate', label: 'Manual Decision', icon: Gavel, description: 'Admin Approve/Reject controls.' },
     { category: "Internal", key: 'auto_score', label: 'Auto Scorer', icon: Calculator, description: 'Hidden scoring logic.' },
     { category: "Internal", key: 'access_gate', label: 'Access Gate', icon: Lock, description: 'Eligibility or Auth check.' },
+
+    // Dashboard Widgets
+    { category: "Display", key: 'widget_banner', label: 'Welcome Banner', icon: LayoutTemplate, description: 'Hero banner for dashboards.' },
+    { category: "Display", key: 'widget_action_grid', label: 'Action Grid', icon: LayoutTemplate, description: 'Grid of action buttons.' },
+    { category: "Display", key: 'widget_stat_card', label: 'Stat Cards', icon: Activity, description: 'Key metrics display.' },
+    { category: "Display", key: 'widget_process_list', label: 'Process List', icon: ListTodo, description: 'List of active processes.' },
 ] as const;
 
 export type StageTypeKey = typeof PIPELINE_STAGE_TYPES[number]['key'];

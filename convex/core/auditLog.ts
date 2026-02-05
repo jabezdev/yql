@@ -3,6 +3,8 @@ import { query, internalMutation } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { getViewer, ensureAdmin } from "./auth";
 import type { MutationCtx } from "../_generated/server";
+import { isStaffRole } from "./accessControl";
+import { generateUuid } from "../engine/utils";
 
 // ============================================
 // TYPES
@@ -74,6 +76,7 @@ export async function createAuditLog(
         changes: params.changes,
         metadata: params.metadata,
         createdAt: Date.now(),
+        uuid: generateUuid(),
     });
 }
 
@@ -93,6 +96,7 @@ export const logAudit = internalMutation({
         return await ctx.db.insert("audit_logs", {
             ...args,
             createdAt: Date.now(),
+            uuid: generateUuid(),
         });
     },
 });
@@ -112,8 +116,8 @@ export const getEntityLogs = query({
     },
     handler: async (ctx, args) => {
         const user = await getViewer(ctx);
-        if (!user || !['admin', 'manager', 'lead', 'officer'].includes(user.systemRole || "")) {
-            throw new Error("Unauthorized: Officer access required");
+        if (!user || !isStaffRole(user.systemRole)) {
+            throw new Error("Unauthorized: Staff access required");
         }
 
         const logs = await ctx.db

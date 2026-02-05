@@ -2,6 +2,8 @@ import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import { ensureAdmin, getViewer } from "./auth";
 import { createAuditLog } from "./auditLog";
+import { isStaffRole } from "./accessControl";
+import { generateUuid } from "../engine/utils";
 
 // ============================================
 // QUERIES
@@ -65,7 +67,6 @@ export const getDepartmentBySlug = query({
 export const getChildDepartments = query({
     args: { parentId: v.optional(v.id("departments")) },
     handler: async (ctx, args) => {
-        return await ctx.db
         const depts = await ctx.db
             .query("departments")
             .withIndex("by_parent", (q) => q.eq("parentDepartmentId", args.parentId))
@@ -81,8 +82,8 @@ export const getDepartmentMembers = query({
     args: { departmentId: v.id("departments") },
     handler: async (ctx, args) => {
         const user = await getViewer(ctx);
-        if (!user || !['admin', 'manager', 'lead', 'officer'].includes(user.systemRole || "")) {
-            throw new Error("Unauthorized: Officer access required");
+        if (!user || !isStaffRole(user.systemRole)) {
+            throw new Error("Unauthorized: Staff access required");
         }
 
         // Get all users with this department in their positions
@@ -115,6 +116,7 @@ export const createDepartment = mutation({
     },
     handler: async (ctx, args) => {
         const admin = await ensureAdmin(ctx);
+        if (!admin) throw new Error("Unauthorized");
 
         // Check slug uniqueness
         const existing = await ctx.db
@@ -129,6 +131,7 @@ export const createDepartment = mutation({
         const departmentId = await ctx.db.insert("departments", {
             ...args,
             isActive: true,
+            uuid: generateUuid(),
         });
 
         // Audit Log
@@ -160,6 +163,7 @@ export const updateDepartment = mutation({
     },
     handler: async (ctx, args) => {
         const admin = await ensureAdmin(ctx);
+        if (!admin) throw new Error("Unauthorized");
 
         const department = await ctx.db.get(args.departmentId);
         if (!department) throw new Error("Department not found");
@@ -205,6 +209,7 @@ export const deleteDepartment = mutation({
     args: { departmentId: v.id("departments") },
     handler: async (ctx, args) => {
         const admin = await ensureAdmin(ctx);
+        if (!admin) throw new Error("Unauthorized");
 
         const department = await ctx.db.get(args.departmentId);
         if (!department) throw new Error("Department not found");

@@ -17,6 +17,10 @@ import * as DecisionGate from "./internal/decision_gate";
 import * as AutoScore from "./internal/auto_score";
 import * as AccessGate from "./internal/access_gate";
 import * as VideoResponse from "./inputs/video_response";
+import * as Banner from "./widgets/Banner";
+import * as ActionGrid from "./widgets/ActionGrid";
+import * as StatCard from "./widgets/StatCard";
+import * as ProcessList from "./widgets/ProcessList";
 // New Blocks
 // Specialized HR modules have been moved to dedicated pages
 
@@ -56,7 +60,7 @@ export interface ApplicantViewProps<TConfig = any, TValue = any> {
  * @template TApplicantValue - What the applicant submitted
  * @template TReviewerValue - What the reviewer can add
  */
- 
+
 export interface ReviewerViewProps<
     TConfig = any,
     TApplicantValue = any,
@@ -227,6 +231,40 @@ export const BLOCK_REGISTRY: Partial<Record<BlockTypeKey, BlockDefinition>> = {
     are no longer Generic Blocks. They are implemented in src/pages/modules/
     */
 
+
+    // Dashboard Widgets
+    widget_banner: {
+        type: 'widget_banner',
+        title: 'Welcome Banner',
+        ConfigEditor: Banner.ConfigEditor,
+        ParticipantView: Banner.ParticipantView,
+        ReviewerView: Banner.ReviewerView,
+        validate: Banner.validate
+    },
+    widget_action_grid: {
+        type: 'widget_action_grid',
+        title: 'Action Grid',
+        ConfigEditor: ActionGrid.ConfigEditor,
+        ParticipantView: ActionGrid.ParticipantView,
+        ReviewerView: ActionGrid.ReviewerView,
+        validate: ActionGrid.validate
+    },
+    widget_stat_card: {
+        type: 'widget_stat_card',
+        title: 'Stat Cards',
+        ConfigEditor: StatCard.ConfigEditor,
+        ParticipantView: StatCard.ParticipantView,
+        ReviewerView: StatCard.ReviewerView,
+        validate: StatCard.validate
+    },
+    widget_process_list: {
+        type: 'widget_process_list',
+        title: 'Process List',
+        ConfigEditor: ProcessList.ConfigEditor,
+        ParticipantView: ProcessList.ParticipantView,
+        ReviewerView: ProcessList.ReviewerView,
+        validate: ProcessList.validate
+    },
 };
 
 export const getBlockDefinition = (type: BlockTypeKey): BlockDefinition | null => {

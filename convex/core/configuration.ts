@@ -9,76 +9,10 @@ import { createAuditLog } from "./auditLog";
  * ============================================
  */
 
-export const createDepartment = mutation({
-    args: {
-        name: v.string(),
-        slug: v.string(),
-        description: v.optional(v.string()),
-        headId: v.optional(v.id("users")),
-        managerIds: v.optional(v.array(v.id("users"))),
-        parentDepartmentId: v.optional(v.id("departments")),
-    },
-    handler: async (ctx, args) => {
-        const admin = await ensureAdmin(ctx);
-
-        const existing = await ctx.db
-            .query("departments")
-            .withIndex("by_slug", q => q.eq("slug", args.slug))
-            .first();
-
-        if (existing) {
-            throw new Error(`Department with slug "${args.slug}" already exists`);
-        }
-
-        const deptId = await ctx.db.insert("departments", {
-            ...args,
-            isActive: true,
-            order: 0,
-        });
-
-        await createAuditLog(ctx, {
-            userId: admin._id,
-            action: "department.create",
-            entityType: "departments",
-            entityId: deptId,
-            changes: { after: args }
-        });
-
-        return deptId;
-    }
-});
-
-export const updateDepartment = mutation({
-    args: {
-        departmentId: v.id("departments"),
-        name: v.optional(v.string()),
-        slug: v.optional(v.string()), // Use with caution
-        description: v.optional(v.string()),
-        headId: v.optional(v.id("users")),
-        managerIds: v.optional(v.array(v.id("users"))),
-        isActive: v.optional(v.boolean()),
-    },
-    handler: async (ctx, args) => {
-        const admin = await ensureAdmin(ctx);
-        const { departmentId, ...updates } = args;
-
-        const dept = await ctx.db.get(departmentId);
-        if (!dept) throw new Error("Department not found");
-
-        await ctx.db.patch(departmentId, updates);
-
-        await createAuditLog(ctx, {
-            userId: admin._id,
-            action: "department.update",
-            entityType: "departments",
-            entityId: departmentId,
-            changes: {
-                before: dept,
-                after: updates
-            }
-        });
-    }
-});
+/*
+ * Dead code removed: createDepartment, updateDepartment
+ * Logic moved to convex/core/departments.ts
+ */
 
 /**
  * ============================================
@@ -99,6 +33,7 @@ export const updateSystemNotificationTriggers = mutation({
     },
     handler: async (ctx, args) => {
         const admin = await ensureAdmin(ctx);
+        if (!admin) throw new Error("Unauthorized");
 
         // Store in system_settings
         const existing = await ctx.db.query("system_settings")

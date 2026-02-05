@@ -1,18 +1,19 @@
 import { v } from "convex/values";
-import { zStageSubmission } from "../lib/validators";
+import { zStageSubmission } from "./utils";
 import { mutation, query } from "../_generated/server";
 import { internal } from "../_generated/api";
-import type { Doc, Id } from "../_generated/dataModel";
+import type { Doc } from "../_generated/dataModel";
 
 import { getViewer, ensureAdmin, ensureReviewer } from "../core/auth";
 import { createAuditLog } from "../core/auditLog";
-import { requireRateLimit } from "../lib/rateLimit";
-import { validateStageSubmission, calculateNextStage } from "../lib/processEngine";
-import { getProcessAccessMask, canAccessProcess } from "../lib/processAccess";
+import { requireRateLimit } from "../core/rateLimit";
+import { validateStageSubmission, calculateNextStage } from "./utils";
+import { getProcessAccessMask, canAccessProcess } from "./access";
+import { ROLE_HIERARCHY, SYSTEM_ROLES, PROCESS_STATUS, isAdmin } from "../core/constants";
+import { generateSchemaFromConfig } from "./validators/schemaGenerator";
+import { generateUuid } from "./utils";
 
-/**
- * Gets a single process.
- */
+/** Gets a single process. */
 export const getProcess = query({
     args: {
         userId: v.optional(v.id("users")),
@@ -27,7 +28,7 @@ export const getProcess = query({
         if (args.processId) {
             const process = await ctx.db.get(args.processId);
             if (!process || process.isDeleted) return null;
-            if (process.userId !== user._id && user.systemRole !== "admin") {
+            if (process.userId !== user._id && !isAdmin(user.systemRole)) {
                 throw new Error("Unauthorized");
             }
             return process;
@@ -36,7 +37,7 @@ export const getProcess = query({
         // If generic lookup by user
         let targetUserId = user._id;
         if (args.userId) {
-            if (args.userId !== user._id && user.systemRole !== "admin") {
+            if (args.userId !== user._id && !isAdmin(user.systemRole)) {
                 throw new Error("Unauthorized");
             }
             targetUserId = args.userId;
@@ -57,88 +58,121 @@ export const getProcess = query({
     },
 });
 
-/**
- * Gets all processes (Admin/Officer only) with pagination.
- * Filters based on program viewConfig visibility.
- */
+/** Gets all active processes for the current user (Inbox). */
+export const getMyProcesses = query({
+    args: {},
+    handler: async (ctx) => {
+        const user = await getViewer(ctx);
+        if (!user) return [];
+
+        const processes = await ctx.db
+            .query("processes")
+            .withIndex("by_user", (q) => q.eq("userId", user._id))
+            .filter((q) => q.neq(q.field("isDeleted"), true))
+            .collect();
+
+        // Sort by updated descending
+        return processes.sort((a, b) => b.updatedAt - a.updatedAt);
+    },
+});
+
+/** Gets all processes for users managed by the current user (Team Inbox). */
+export const getTeamProcesses = query({
+    args: {},
+    handler: async (ctx) => {
+        const user = await getViewer(ctx);
+        if (!user) return [];
+
+        // 1. Get Direct Reports
+        const assignments = await ctx.db
+            .query("manager_assignments")
+            .withIndex("by_manager", (q) => q.eq("managerId", user._id))
+            .filter((q) => q.neq(q.field("isDeleted"), true))
+            .collect();
+
+        if (assignments.length === 0) return [];
+
+        const reportIds = assignments.map(a => a.userId);
+
+        // 2. Fetch Processes for each Report
+        // Using Promise.all for parallelism
+        const processesLists = await Promise.all(
+            reportIds.map(userId =>
+                ctx.db
+                    .query("processes")
+                    .withIndex("by_user", (q) => q.eq("userId", userId))
+                    .filter((q) => q.neq(q.field("isDeleted"), true))
+                    .collect()
+            )
+        );
+
+        // 3. Flatten and Sort
+        const allProcesses = processesLists.flat();
+        return allProcesses.sort((a, b) => b.updatedAt - a.updatedAt);
+    },
+});
+
+/** Gets all processes (Admin/Officer only) with pagination. Uses Merge Sort pattern for scalability. */
 export const getProcessesPaginated = query({
     args: {
-        type: v.optional(v.string()),
+        type: v.optional(v.string()), // Optional filter by type
         paginationOpts: v.any(), // PaginationOptions
     },
     handler: async (ctx, args) => {
         // Require at least officer/staff level
         await ensureReviewer(ctx);
         const user = await getViewer(ctx);
-
         if (!user) throw new Error("Unauthorized");
 
-        const roleSlug = user.systemRole || "guest";
-        const isAdmin = user.systemRole === 'admin';
+        const userRole = user.systemRole || SYSTEM_ROLES.GUEST;
+        const userLevel = ROLE_HIERARCHY[userRole as keyof typeof ROLE_HIERARCHY] || 0;
 
-        let querySource;
 
-        if (args.type) {
-            querySource = ctx.db.query("processes").withIndex("by_type", q => q.eq("type", args.type!));
-        } else {
-            querySource = ctx.db.query("processes");
-        }
+        const querySource = args.type
+            ? ctx.db.query("processes").withIndex("by_type", q => q.eq("type", args.type!))
+            : ctx.db.query("processes");
 
-        // Optimization: Filter by Program Visibility purely in DB if possible
-        // to avoid "empty pages" and N+1 queries.
-        if (isAdmin) {
-            querySource = querySource.filter(q => q.neq(q.field("isDeleted"), true));
-        } else {
-            // 1. Fetch all programs (small dataset, usually < 50)
-            const allPrograms = await ctx.db.query("programs").collect();
+        // Apply Visibility Filter (DB Side)
+        // efficient "Push Down" predicate
+        const paginated = await querySource.filter(q =>
+            q.and(
+                q.neq(q.field("isDeleted"), true),
+                q.lte(q.field("requiredRoleLevel"), userLevel)
+            )
+        ).order("desc").paginate(args.paginationOpts);
 
-            // 2. Determine which mapped IDs should be excluded or included
-            const visibleProgramIds: Id<"programs">[] = [];
-
-            for (const program of allPrograms) {
-                let isVisible = true;
-                if (program.viewConfig) {
-                    const roleConfig = program.viewConfig[roleSlug];
-                    if (roleConfig && roleConfig.visible === false) {
-                        isVisible = false;
-                    }
-                }
-                if (isVisible) {
-                    visibleProgramIds.push(program._id);
-                }
-            }
-
-            // 3. Apply Filter
-            // Must combine "not deleted" AND "visible program" logic
-
-            querySource = querySource.filter(q => {
-                const notDeleted = q.neq(q.field("isDeleted"), true);
-                const isOrphan = q.eq(q.field("programId"), undefined);
-
-                if (visibleProgramIds.length === 0) {
-                    return q.and(notDeleted, isOrphan);
-                }
-
-                const checks = visibleProgramIds.map(id => q.eq(q.field("programId"), id));
-
-                // q.or accepts varargs, spread the checks
-                return q.and(
-                    notDeleted,
-                    q.or(isOrphan, ...checks)
-                );
-            });
-        }
-
-        const result = await querySource.paginate(args.paginationOpts);
-
-        return result;
+        return paginated;
     },
 });
 
-/**
- * Get a process with access mask for the current user.
- * Returns visibility and action permissions based on program accessControl/viewConfig.
- */
+/** Helper to determine Role Level from Program Config */
+function calculateRequiredRoleLevel(program: FuncResult<"programs">): number {
+    if (!program.viewConfig) return 0; // Public/Guest
+
+    const levels = [
+        { role: SYSTEM_ROLES.GUEST, val: 0 },
+        { role: SYSTEM_ROLES.MEMBER, val: 10 },
+        { role: SYSTEM_ROLES.MANAGER, val: 20 },
+        { role: SYSTEM_ROLES.LEAD, val: 30 },
+        { role: SYSTEM_ROLES.ADMIN, val: 100 },
+    ];
+
+    for (const { role, val } of levels) {
+        const config = program.viewConfig[role];
+        // Default is visible (true)
+        const isVisible = config?.visible !== false;
+
+        if (isVisible) return val;
+    }
+
+    return 100; // Only Admin
+}
+
+// Add this type helper if needed or just use `any` for Program
+type FuncResult<T extends "programs"> = Doc<T>;
+
+
+/** Get a process with access mask for the current user. */
 export const getProcessWithAccess = query({
     args: {
         processId: v.id("processes"),
@@ -166,9 +200,7 @@ export const getProcessWithAccess = query({
     },
 });
 
-/**
- * Updates just status (Admin only).
- */
+/** Updates just status (Admin only). */
 export const updateStatus = mutation({
     args: {
         processId: v.id("processes"),
@@ -177,6 +209,7 @@ export const updateStatus = mutation({
     handler: async (ctx, args) => {
         // Require admin level
         const user = await ensureAdmin(ctx);
+        if (!user) throw new Error("Unauthorized");
 
 
         const process = await ctx.db.get(args.processId);
@@ -227,9 +260,7 @@ export const updateStatus = mutation({
     },
 });
 
-/**
- * Safely submit data for the CURRENT stage and advance if applicable.
- */
+/** Safely submit data for the CURRENT stage and advance if applicable. */
 export const submitStage = mutation({
     args: {
         processId: v.id("processes"),
@@ -243,7 +274,7 @@ export const submitStage = mutation({
         const process = await ctx.db.get(args.processId);
         if (!process) throw new Error("Process not found");
 
-        if (process.userId !== user._id && user.systemRole !== "admin") {
+        if (process.userId !== user._id && !isAdmin(user.systemRole)) {
             throw new Error("Unauthorized");
         }
 
@@ -269,12 +300,28 @@ export const submitStage = mutation({
             throw new Error(`Stage mismatch. You are trying to submit to ${args.stageId} but process is at ${process.currentStageId}`);
         }
 
-        // 2. Validate Data (Using Lib & Zod)
+        // 2. Validate Data (Strict Mode via Zod)
         try {
+            // A. Basic Format
             zStageSubmission.parse(args.data);
+
+            // B. Config-Based Schema
+            // If the stage has a defined form config, we validate against it.
+            const validationConfig = currentStageConfig.config || {};
+            const strictSchema = generateSchemaFromConfig(validationConfig);
+
+            strictSchema.parse(args.data);
+
         } catch (e: any) {
-            throw new Error(`Invalid submission data format: ${e.message}`);
+            // Zod Error Formatting
+            if (e.issues) {
+                const issues = e.issues.map((i: any) => `${i.path.join('.')}: ${i.message}`).join(', ');
+                throw new Error(`Validation Failed: ${issues}`);
+            }
+            throw new Error(`Invalid submission data: ${e.message}`);
         }
+
+        // Legacy check (kept for robust double-check on 'requiredFields' block array)
         validateStageSubmission(args.data, currentStageConfig);
 
         // 3. Save Data
@@ -295,7 +342,7 @@ export const submitStage = mutation({
             updates.currentStageId = nextStageId as Doc<"stages">["_id"];
         } else {
             // End of pipeline
-            updates.status = "completed"; // Mark as completed
+            updates.status = PROCESS_STATUS.COMPLETED; // Mark as completed
         }
 
         await ctx.db.patch(process._id, updates);
@@ -346,9 +393,7 @@ export const submitStage = mutation({
     }
 });
 
-/**
- * Create a new process (e.g. applying)
- */
+/** Create a new process (e.g. applying). */
 export const createProcess = mutation({
     args: {
         programId: v.id("programs"),
@@ -365,7 +410,7 @@ export const createProcess = mutation({
         await requireRateLimit(ctx, user._id, "process.create");
 
         // Role-Based Access Control via DB
-        const systemRole = user.systemRole || "guest";
+        const systemRole = user.systemRole || SYSTEM_ROLES.GUEST;
 
         // 1. Fetch Program Config (Inversion of Control)
         const program = await ctx.db.get(args.programId);
@@ -396,9 +441,6 @@ export const createProcess = mutation({
             }
         }
 
-        // Strict Mode: Removed legacy allowStartBy fallback.
-        // Access must be explicitly granted via program.accessControl using valid roles.
-
         if (!isAllowed) {
             throw new Error(`Users with role '${systemRole}' are not permitted to start this process.`);
         }
@@ -422,9 +464,9 @@ export const createProcess = mutation({
                 )
                 .first();
 
-            const isAdmin = user.systemRole === 'admin';
+            const isAdminUser = isAdmin(user.systemRole);
 
-            if (!managerAssignment && !isAdmin) {
+            if (!managerAssignment && !isAdminUser) {
                 throw new Error("You can only create processes for your direct reports");
             }
 
@@ -447,13 +489,18 @@ export const createProcess = mutation({
             userId: effectiveUserId,
             programId: args.programId,
             type: args.type,
-            status: "in_progress",
+            status: PROCESS_STATUS.IN_PROGRESS,
             currentStageId: firstStageId,
             updatedAt: Date.now(),
             data: {},
             // Phase 3 fields
             departmentId: args.departmentId,
             createdFor: args.targetUserId !== user._id ? args.targetUserId : undefined,
+            // Scalability: Calc visibility level
+            requiredRoleLevel: calculateRequiredRoleLevel(program),
+            // Resilience: Snapshot stage flow
+            stageFlowSnapshot: program.stageIds,
+            uuid: generateUuid(),
         });
 
         // Audit Log
@@ -488,10 +535,7 @@ export const createProcess = mutation({
     }
 });
 
-/**
- * Accepts an offer and promotes the user.
- * Now fully data-driven via automations.
- */
+/** Accepts an offer and promotes the user. Data-driven via automations. */
 export const acceptOffer = mutation({
     args: {
         processId: v.id("processes"),
@@ -506,7 +550,7 @@ export const acceptOffer = mutation({
         if (process.userId !== user._id) throw new Error("Unauthorized");
 
         // Status must be 'accepted' (which means Offer Extended in our flow)
-        if (process.status !== "accepted") {
+        if (process.status !== PROCESS_STATUS.ACCEPTED) {
             throw new Error("No pending offer to accept.");
         }
 
@@ -515,7 +559,7 @@ export const acceptOffer = mutation({
 
         // 1. Update Process Status
         await ctx.db.patch(process._id, {
-            status: "offer_accepted", // or "completed"
+            status: PROCESS_STATUS.OFFER_ACCEPTED, // or "completed"
             updatedAt: Date.now(),
         });
 
@@ -527,8 +571,8 @@ export const acceptOffer = mutation({
             processId: process._id,
             userId: user._id,
             data: {
-                previousStatus: "accepted",
-                newStatus: "offer_accepted"
+                previousStatus: PROCESS_STATUS.ACCEPTED,
+                newStatus: PROCESS_STATUS.OFFER_ACCEPTED
             }
         });
 
@@ -538,7 +582,7 @@ export const acceptOffer = mutation({
             action: "offer.accept",
             entityType: "processes",
             entityId: process._id,
-            changes: { before: { status: "accepted" }, after: { status: "offer_accepted" } }
+            changes: { before: { status: PROCESS_STATUS.ACCEPTED }, after: { status: PROCESS_STATUS.OFFER_ACCEPTED } }
         });
 
         return { success: true };

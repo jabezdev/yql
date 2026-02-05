@@ -34,41 +34,36 @@ To maintain this flexibility, future developers must adhere to this decision fra
 
 ---
 
-## 📂 Vertical Slice Architecture
+## 📂 Two-Layer Architecture
 
-The codebase is organized into three distinct layers to manage complexity. This structure is mirrored in `src/` (Frontend) and `convex/` (Backend).
+The codebase is strictly organized into two distinct layers. This structure is mirrored in `src/` (Frontend) and `convex/` (Backend).
 
 ```mermaid
 graph TD
     subgraph "Your Codebase"
-        D[Domains (Specifics)]
-        E[Engine (Generic)]
-        C[Core (Shared)]
+        E[Engine - Generic]
+        C[Core - Shared]
     end
     
-    D --> E
-    D --> C
     E --> C
 ```
 
 ### 1. Core (`/core`)
 **The Foundation.** Platform-agnostic utilities shared by everyone.
--   **Auth**: Session handling, `RoleGuard`, `useCurrentUser`.
--   **UI**: Generic components (`Button`, `Card`, `Modal`).
+-   **Auth**: Identity & Basic Guards (`auth.ts`).
+-   **Access Control**: Granular Permissions & RBAC (`accessControl.ts`).
+-   **Constants**: System roles, HR statuses, role hierarchy (`constants.ts`).
+-   **Middleware**: Rate limiting and auth wrappers (`middleware.ts`).
 -   **Audit**: `createAuditLog` (Legal trail for everything).
+-   **UI**: Generic components (`Button`, `Card`, `Modal`).
 
 ### 2. Engine (`/engine`)
-**The Workflow Machine.** The generic logic that powers 80% of the app.
+**The Workflow Machine.** The generic logic that powers 100% of the app.
 -   **Programs (`programs.ts`)**: Configuration "Classes" (e.g., "Onboarding 2026").
 -   **Processes (`processes.ts`)**: State "Instances" (e.g., "Jane's Onboarding").
 -   **Automations (`automations.ts`)**: The Event Bus.
 -   **Blocks**: `InputText`, `FileUpload`, `Signature` logic.
-
-### 3. Domains (`/domains`)
-**The Business Logic.** Specialized features that don't fit the generic engine.
--   **HR**: Performance Reviews, Goals, Promotions (Complex logic).
--   **Ops**: Events, Inventory, Finance (Data-heavy).
--   **Admin**: The interfaces to configure the Engine.
+-   **Access**: Process-level permission logic (`access.ts`).
 
 ---
 
@@ -115,31 +110,118 @@ We moved away from hardcoded "Side Effects" (e.g., `if (accepted) user.role = me
 
 ---
 
-## 🔒 Security & RBAC (Matrix Model)
+## 🔒 Unified Access Control System
 
-Security is handled at three levels:
+Security is handled through a **centralized three-tier model** with a clear priority cascade.
 
-1.  **System Role** (`users.systemRole`):
-    *Defined in the `roles` table. Determines global permissions.*
-    -   `guest`: Applicant/Public.
-    -   `contributor`: Non-member helper/volunteer.
-    -   `alumni`: Former member.
-    -   `member`: Standard active member.
-    -   `manager`: Operational lead (Squad Lead).
-    -   `lead`: Strategic lead (Dept Head/Team Lead).
-    -   `admin`: System owner (God mode).
-    
-    *implementation Note*: These are not hardcoded Enums. They are seeded in the DB. You can add more roles via the `roles` table, but these 7 are the system defaults.
+### Access Check Priority Cascade
 
-2.  **Context Role** (Program-Level):
-    -   Defined in `Program.accessControl`.
-    -   *Example*: A "Member" allows to *Start* a "Leave Request" but cannot *View* "Performance Reviews".
+When checking access, the system follows this order:
 
-3.  **Relationship Role** (Matrix):
-    -   `manager_assignments` table.
-    -   Checks: "Is User A the direct manager of User B?"
+```mermaid
+flowchart TD
+    Start[Access Request] --> A{1. Authenticated?}
+    A -->|No| Deny[❌ DENY]
+    A -->|Yes| B{2. HR_STATUS = blocked?}
+    B -->|Yes| Deny
+    B -->|No| C{3. Is Admin?}
+    C -->|Yes| Allow[✅ ALLOW]
+    C -->|No| D{4. minimumRole check?}
+    D -->|Fail| Deny
+    D -->|Pass| E{5. allowedRoles check?}
+    E -->|Fail| Deny
+    E -->|Pass| F{6. specialRole check?}
+    F -->|Fail| Deny
+    F -->|Pass| G{7. Resource RBAC?}
+    G -->|Deny| Deny
+    G -->|Allow| Allow
+```
 
-**Best Practice**: Always use `getViewer(ctx)` and helper guards like `ensureReviewer(ctx)` in your mutations.
+### The Three Tiers
+
+#### 1. HR Status (`users.hrStatus`)
+*Lifecycle status that determines if user can access the system at all.*
+
+| Status | Description |
+| :--- | :--- |
+| `candidate` | Applicant, limited access |
+| `active` | Full member, standard access |
+| `alumni` | Former member, read-only |
+| `blocked` | Suspended, no access |
+
+**Implementation**: `isBlockedStatus()`, `isActiveStatus()` in `core/constants.ts`.
+
+#### 2. System Role (`users.systemRole`)
+*Global permission level with hierarchy.*
+
+| Role | Level | Description |
+| :--- | :---: | :--- |
+| `guest` | 0 | Applicant/Public |
+| `member` | 10 | Standard active member |
+| `manager` | 20 | Operational lead (Squad Lead) |
+| `lead` | 30 | Strategic lead (Dept Head) |
+| `admin` | 100 | System owner (God mode) |
+
+**Implementation**: `ROLE_HIERARCHY`, `hasMinimumRole()`, `isStaffRole()`, `isAdmin()` in `core/constants.ts`.
+
+#### 3. Special Roles (`special_roles` table)
+*Additive permissions for granular features.*
+
+| Example | Purpose |
+| :--- | :--- |
+| `recruiter` | Can access recruitment tools |
+| `finance_admin` | Can approve expense reports |
+
+**Implementation**: `hasSpecialRole()`, `getUserSpecialRoles()` in `core/accessControl.ts`.
+
+### Key Files
+
+| File | Purpose |
+| :--- | :--- |
+| `core/constants.ts` | `HR_STATUSES`, `SYSTEM_ROLES`, `ROLE_HIERARCHY`, helper functions |
+| `core/accessControl.ts` | `checkAccess()`, `requireAccess()`, centralized access service |
+| `core/auth.ts` | `getViewer()`, `ensureAdmin()`, `ensureReviewer()` |
+| `core/middleware.ts` | `mutationWithAuth()` with minimumRole, requireActive support |
+
+### Usage Patterns
+
+**Backend - Quick Checks:**
+```typescript
+import { isAdmin, isStaffRole, hasMinimumRole } from "./constants";
+
+if (isAdmin(user.systemRole)) { /* Admin bypass */ }
+if (isStaffRole(user.systemRole)) { /* Manager+ */ }
+if (hasMinimumRole(user.systemRole, SYSTEM_ROLES.MANAGER)) { /* At least manager */ }
+```
+
+**Backend - Full Access Check:**
+```typescript
+import { checkAccess } from "./accessControl";
+
+const result = await checkAccess(ctx, {
+    minimumRole: "manager",
+    requireActive: true,
+});
+if (!result.allowed) throw new Error(result.reason);
+```
+
+**Frontend - Route Protection:**
+```tsx
+<RoleGuard minimumRole="manager" requireActive>
+    <StaffOnlyPage />
+</RoleGuard>
+```
+
+### Context-Level Access (Program/Entity Specific)
+
+Beyond system-wide RBAC, individual entities define their own access:
+
+| Entity | Field | Purpose |
+| :--- | :--- | :--- |
+| `programs` | `accessControl` | Role-based actions and department scoping |
+| `stages` | `roleAccess` | Per-stage visibility/submission rights |
+| `block_instances` | `roleAccess` | Per-block view/edit permissions |
+| `dashboards` | `roleAccess` | Dashboard visibility by role |
 
 ---
 
@@ -150,10 +232,86 @@ Security is handled at three levels:
 | **"I need a reusable React Button"** | `src/core/ui` | `Button.tsx` |
 | **"I need a new type of form field"** | `src/engine/blocks` | `AudioRecorder.tsx` |
 | **"I need to query all Users"** | `convex/core/users.ts` | `getAllUsers` |
-| **"I need a Payroll module"** | `src/domains/finance` | `Payroll.tsx` |
 | **"I need to fix the Application Logic"** | `convex/engine/processes.ts` | `submitStage` |
+| **"I need to add a role check"** | `convex/core/constants.ts` | Use `isStaffRole()`, `hasMinimumRole()` |
 
 ### Adding a New Feature
 1.  **Can the Engine do it?** (Can I just configure a Program?) -> **Do that.**
 2.  **Can the Engine almost do it?** (Do I need a new Block type?) -> **Extend Engine.**
-3.  **Is it totally custom?** (e.g., Interactive Calendar) -> **Build in Domain.**
+
+### Adding Access Control
+1.  **Never use inline role arrays** like `['admin', 'manager'].includes(...)`.
+2.  **Use helper functions**: `isAdmin()`, `isStaffRole()`, `hasMinimumRole()`.
+3.  **For complex checks**: Use `checkAccess()` from `accessControl.ts`.
+
+---
+
+## 🚦 Current Implementation Status (Feb 2026)
+
+### ✅ What is Working
+-   **Generic Engine**: `programs.ts` and `processes.ts` fully support the "Configuration over Code" philosophy.
+-   **Dynamic Data**: `v.any()` allows for flexible form inputs and stage configurations.
+-   **Automations**: Event-driven model (`trigger` -> `action`) is implemented in `automations.ts` and triggered via `ctx.scheduler`.
+-   **Unified Access Control**: Centralized three-tier access model (HR Status + System Role + Special Roles) with priority cascade.
+-   **Role Hierarchy**: `hasMinimumRole()` enables "manager or above" style checks.
+-   **HR Status Enforcement**: Blocked users are rejected at the access control layer.
+-   **Standardized Process Statuses**: Unified `PROCESS_STATUS` constants prevent magic string errors across the engine.
+-   **Basic Security**: `accessGate.ts` prevents brute force on specific blocks (timing-safe comparisons).
+
+### ⚠️ Known Gaps & Risks
+
+#### 1. Flexibility
+-   **Validation Weakness**: `submitStage` uses a generic `z.any()` schema. While `validateStageSubmission` checks `requiredFields`, it lacks deep type enforcement or recursive object validation.
+-   **Routing Logic**: `calculateNextStage` supports basic "If Field == Value" logic but lacks complex Boolean operators (AND/OR) or multi-field dependencies.
+
+#### 2. Infrastructure & Scalability
+-   **Pagination Hazard**: `getProcessesPaginated` uses `requiredRoleLevel` index for efficient filtering, but complex visibility rules may still require optimization for 10k+ records.
+-   **Config Management**: There is no version control for component/JSON configurations. If a Program's config structure changes, existing Processes may break.
+
+#### 3. Security (Resolved)
+-   **Rate Limiting**: Currently using `requireRateLimit` and `mutationWithAuth` wrapper for protected mutations.
+
+---
+
+## 📚 Quick Reference
+
+### Role Helpers (`core/constants.ts`)
+
+```typescript
+// Check if admin
+isAdmin(role)                           // role === 'admin'
+
+// Check if staff (manager+)  
+isStaffRole(role)                       // manager, lead, or admin
+
+// Check hierarchy
+hasMinimumRole(role, SYSTEM_ROLES.MANAGER)  // role >= manager
+
+// Get numeric level
+getRoleLevel(role)                      // For DB indexing
+```
+
+### HR Status Helpers (`core/constants.ts`)
+
+```typescript
+isBlockedStatus(status)   // status === 'blocked'
+isActiveStatus(status)    // status === 'active'
+```
+
+### Access Control (`core/accessControl.ts`)
+
+```typescript
+// Full check with cascade
+const result = await checkAccess(ctx, {
+    minimumRole: "manager",     // Hierarchy check
+    allowedRoles: ["admin"],    // Exact match (OR with minimumRole)
+    requireActive: true,        // Require active HR status
+    resource: "files",          // For resource-level RBAC
+    action: "delete",
+});
+
+// Convenience wrappers
+await requireAccess(ctx, options);      // Throws if denied
+await requireStaffAccess(ctx);          // Manager+
+await requireAdminAccess(ctx);          // Admin only
+```

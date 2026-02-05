@@ -1,0 +1,19 @@
+import { SignUp } from "@clerk/clerk-react";
+
+export default function RegisterPage() {
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+            <div className="w-full max-w-md space-y-8 flex flex-col items-center">
+                <div className="text-center mb-8">
+                    <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
+                        Join YQL
+                    </h2>
+                    <p className="mt-2 text-sm text-gray-600">
+                        Create your account to get started
+                    </p>
+                </div>
+                <SignUp fallbackRedirectUrl="/dashboard" signInUrl="/login" />
+            </div>
+        </div>
+    );
+}

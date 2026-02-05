@@ -1,13 +1,14 @@
 import { internalMutation } from "../_generated/server";
 import type { MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
+import { createAuditLog } from "../core/auditLog";
+import { generateUuid } from "./utils";
 
-/**
- * Evaluates automations for a specific trigger.
- * This is an internal mutation called by other mutations (processes, events, etc).
- */
+const MAX_RECURSION_DEPTH = 3;
+
+/** Evaluates automations for a specific trigger. Internal mutation. */
 export const evaluate = internalMutation({
     args: {
         trigger: v.string(), // "status_change", "stage_submission"
@@ -15,8 +16,22 @@ export const evaluate = internalMutation({
         processId: v.optional(v.id("processes")),
         userId: v.id("users"),
         data: v.optional(v.any()), // Context data (e.g., new status, form usage)
+        depth: v.optional(v.number()), // Loop Detection
     },
     handler: async (ctx, args) => {
+        const depth = args.depth || 0;
+        if (depth > MAX_RECURSION_DEPTH) {
+            console.error(`Automation Loop Detected! Trigger: ${args.trigger}, User: ${args.userId}. Halting.`);
+            await createAuditLog(ctx, { // Log critical failure
+                userId: args.userId,
+                action: "automation.halted",
+                entityType: "automation",
+                entityId: "loop_protection",
+                metadata: { trigger: args.trigger, depth }
+            });
+            return;
+        }
+
         if (!args.programId) return; // No program context, no automations
 
         const program = await ctx.db.get(args.programId);
@@ -45,7 +60,8 @@ export const evaluate = internalMutation({
                 await executeAction(ctx, action, {
                     userId: args.userId,
                     processId: args.processId,
-                    data: args.data
+                    data: args.data,
+                    depth: depth
                 });
             }
         }
@@ -58,19 +74,7 @@ function checkConditions(conditions: Record<string, unknown> | undefined, contex
 
     // Simple equality check for now
     for (const [key, value] of Object.entries(conditions)) {
-        if (key === "check_prerequisites") {
-            // value = { programSlug: "onboarding", status: "completed" }
-            // Need to check if user has completed that program
-            // This requires async check, but checkConditions was synchronous.
-            // We need to refactor checkConditions to be async or handle it inside the loop.
-            // For now, let's skip complex async checks here or assume data has flags.
-            // Better approach: Let's make checkConditions async?
-            // Or better: Move this check to specific action that fails if not met?
-            // Actually, simplest is to pass context.userHistory to data?
-            // Let's defer "check_prerequisites" to a specific "gate_keeper" action that stops execution,
-            // OR make checkConditions async.
-            continue;
-        }
+        if (key === "check_prerequisites") continue; // Handled async in verifyPrerequisites
 
         // Support specific keys like "status" or deep checking in context
         if (context[key] !== value) {
@@ -80,7 +84,7 @@ function checkConditions(conditions: Record<string, unknown> | undefined, contex
     return true;
 }
 
-// Helper for check_prerequisites (async wrapper in main loop)
+/** Helper for check_prerequisites (async wrapper in main loop) */
 async function verifyPrerequisites(ctx: MutationCtx, userId: Id<"users">, condition: any): Promise<boolean> {
     if (!condition) return true;
     // e.g. { programSlug: "onboarding", status: "completed" }
@@ -111,7 +115,7 @@ interface AutomationAction {
     };
 }
 
-async function executeAction(ctx: MutationCtx, action: AutomationAction, context: { userId: Id<"users">; processId?: Id<"processes">; data?: Record<string, any>; }) {
+async function executeAction(ctx: MutationCtx, action: AutomationAction, context: { userId: Id<"users">; processId?: Id<"processes">; data?: Record<string, any>; depth?: number }) {
     const user = await ctx.db.get(context.userId);
     if (!user) return;
 
@@ -130,7 +134,7 @@ async function executeAction(ctx: MutationCtx, action: AutomationAction, context
             break;
 
         case "update_role":
-            // e.g. payload: { systemRole: "member" }
+            // payload: { systemRole: "member" }
             await ctx.db.patch(user._id, {
                 systemRole: action.payload.systemRole,
             });
@@ -142,7 +146,7 @@ async function executeAction(ctx: MutationCtx, action: AutomationAction, context
             await ctx.db.patch(user._id, {
                 profile: {
                     ...currentProfile,
-                    status: action.payload.status || currentProfile.status
+                    status: (action.payload.status as any) || currentProfile.status
                 }
             });
             break;
@@ -155,8 +159,6 @@ async function executeAction(ctx: MutationCtx, action: AutomationAction, context
             const updates = resolveValues(action.payload.fields as Record<string, any>, context.data);
 
             // Merge with existing customFields or specific profile props
-            // Note: Schema defines specific props like joinDate and a generic customFields
-            // We'll simplisticly map known keys to the root of profile, and others to customFields
             const knownKeys = ["joinDate", "exitDate", "privacyLevel"];
             const newCustomFields = { ...(currentProfile.customFields || {}) };
             const profileUpdates: any = {};
@@ -165,10 +167,6 @@ async function executeAction(ctx: MutationCtx, action: AutomationAction, context
                 if (knownKeys.includes(key)) {
                     profileUpdates[key] = val;
                 } else if (key === "tags") {
-                    // Start tags array or append? For now, replace or ensure array
-                    // If we want to append, we'd need more logic. Let's assume specific tag management is handled by specific actions or UI, 
-                    // or this replaces the list. Let's replace the list for simplicity in "update"
-                    // But wait, schema doesn't have "tags" on profile root, it has customFields.
                     newCustomFields[key] = val;
                 } else {
                     newCustomFields[key] = val;
@@ -249,22 +247,7 @@ async function executeAction(ctx: MutationCtx, action: AutomationAction, context
             break;
         }
 
-        case "create_goal": {
-            // e.g. payload: { title: "...", description: "...", cycleId: "..." }
-            const title = resolveValue(action.payload.title, context.data);
-            if (!title) return;
 
-            await ctx.db.insert("goals", {
-                userId: user._id,
-                title,
-                description: resolveValue(action.payload.description, context.data),
-                cycleId: resolveValue(action.payload.cycleId, context.data),
-                status: "in_progress",
-                createdAt: Date.now(),
-                updatedAt: Date.now()
-            });
-            break;
-        }
 
         case "trigger_process": {
             // Start a new process for the user
@@ -291,7 +274,11 @@ async function executeAction(ctx: MutationCtx, action: AutomationAction, context
                 .first();
             if (existing) return; // Idempotency
 
-            await ctx.db.insert("processes", {
+
+
+            // Create process and trigger automation
+
+            const pid = await ctx.db.insert("processes", {
                 userId: user._id,
                 programId: programId as Id<"programs">,
                 type: prog.programType || "generic",
@@ -299,85 +286,35 @@ async function executeAction(ctx: MutationCtx, action: AutomationAction, context
                 currentStageId: prog.stageIds[0],
                 updatedAt: Date.now(),
                 data: {},
-                // If we had Department Scoping in the payload we could add it
+                // Resilience: Snapshot stage flow
+                stageFlowSnapshot: prog.stageIds,
+                uuid: generateUuid(),
             });
+
+            // Trigger "Process Created" Automation
+            if (prog.automations) {
+                await ctx.scheduler.runAfter(0, internal.engine.automations.evaluate, {
+                    trigger: "process_created",
+                    programId: programId as Id<"programs">,
+                    processId: pid,
+                    userId: user._id,
+                    data: { type: prog.programType || "generic" },
+                    depth: (context.depth || 0) + 1
+                });
+            }
             break;
         }
 
         case "book_event": {
             // payload: { blockId: "...", eventId: "..." }
-            // Only auto-book if specific eventId logic or next available?
-            // Let's support booking a specific event if passed in context, or finding next open in block.
-            const eventId = resolveValue(action.payload.eventId, context.data);
+            const eventId = action.payload.eventId as Id<"events">;
             if (eventId) {
-                // Call book logic
-                await ctx.scheduler.runAfter(0, api.domains.ops.events.bookEvent, { eventId });
+                await ctx.scheduler.runAfter(0, api.engine.events.bookEvent, { eventId });
             }
             break;
         }
 
-        case "distribute_peer_reviews": {
-            // payload: { cycleId: "...", grouping: "same_department", count: 2 }
-            const cycleId = resolveValue(action.payload.cycleId, context.data);
-            const grouping = action.payload.grouping || "same_department";
-            const count = (action.payload.count as number) || 2;
 
-            if (!cycleId) return;
-
-            // This is heavy, maybe offload to a recursive scheduled action if many users?
-            // For now, doing strictly "same_department" logic for the Triggering User?
-            // "distribute_peer_reviews" implies bulk action.
-            // Usually this runs once for the whole system.
-            // But here we are in context of A TRIGGER (e.g. "manual_trigger" or "schedule").
-
-            // Implementation: Find peers for THIS user? Or global?
-            // If context.userId is the admin triggering it, maybe global?
-            // If context.userId is a member, maybe assign THEIR peers?
-
-            // Let's assume Global Distribution if triggered by Admin/System, 
-            // or "Assign Peers For This User" if triggered by User?
-            // The name "distribute_peer_reviews" suggests global.
-            // Let's implement "assign_peers_for_user" logic: ensuring THIS user has peers assigned to review THEM,
-            // or ensuring THIS user is assigned to review others?
-
-            // Let's go with: "Assign reviewers TO this user" (User is reviewee)
-            // AND "Assign this user to review others"
-
-            // Actually, simplest Peer Review logic:
-            // 1. Get all potential reviewers (e.g. same department)
-            // 2. Pick N random ones.
-            const userDept = user.profile?.positions?.find(p => p.isPrimary)?.departmentId;
-            if (grouping === "same_department" && userDept) {
-                // This is getting complicated for a single function.
-                // Let's simplify: Create a placeholder assignment that Admin must confirm?
-                // OR: Just assign manager as reviewer?
-
-                // Real implementation:
-                // We'll trust the User is the Reviewee.
-                // We find 2 peers in same dept (using simple scan for prototype).
-                const allUsers = await ctx.db.query("users").collect();
-                const deptPeers = allUsers.filter(u =>
-                    u._id !== user._id &&
-                    u.profile?.positions?.some(p => p.departmentId === userDept)
-                );
-
-                // Shuffle and pick N
-                const selected = deptPeers.sort(() => 0.5 - Math.random()).slice(0, count);
-
-                for (const peer of selected) {
-                    await ctx.db.insert("peer_review_assignments", {
-                        cycleId: cycleId as Id<"review_cycles">,
-                        reviewerId: peer._id,
-                        revieweeId: user._id,
-                        isAnonymous: true,
-                        status: "pending"
-                    });
-
-                    // Notify Peer?
-                }
-            }
-            break;
-        }
 
         case "update_process_status": {
             if (!action.payload.status) return;
@@ -396,10 +333,7 @@ async function executeAction(ctx: MutationCtx, action: AutomationAction, context
     }
 }
 
-/**
- * Helper to resolve values from context data if the value is a template string like "{{someField}}"
- * or if it's a direct value.
- */
+/** Resolves values from context data (e.g., "{{someField}}") */
 function resolveValue(value: any, contextData: Record<string, unknown> | undefined): any {
     if (typeof value === 'string' && value.startsWith('{{') && value.endsWith('}}') && contextData) {
         const key = value.slice(2, -2).trim();

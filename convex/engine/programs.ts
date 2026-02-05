@@ -2,11 +2,10 @@ import { v } from "convex/values";
 import { query, mutation } from "../_generated/server";
 import { ensureAdmin, getViewer, ensureReviewer } from "../core/auth";
 import { createAuditLog } from "../core/auditLog";
-import { isValidProgramType, PROGRAM_TYPES } from "../lib/constants";
+import { isValidProgramType, PROGRAM_TYPES, isAdmin } from "../core/constants";
+import { generateUuid } from "./utils";
 
-/**
- * Gets the currently active program
- */
+/** Gets the currently active program. */
 export const getActiveProgram = query({
     args: {},
     handler: async (ctx) => {
@@ -17,9 +16,7 @@ export const getActiveProgram = query({
     },
 });
 
-/**
- * Gets all programs (officer+ access)
- */
+/** Gets all programs (officer+ access). */
 export const getAllPrograms = query({
     args: { programType: v.optional(v.string()) },
     handler: async (ctx, args) => {
@@ -37,9 +34,7 @@ export const getAllPrograms = query({
     }
 });
 
-/**
- * Creates a new program
- */
+/** Creates a new program. */
 export const createProgram = mutation({
     args: {
         name: v.string(),
@@ -51,6 +46,7 @@ export const createProgram = mutation({
     },
     handler: async (ctx, args) => {
         const admin = await ensureAdmin(ctx);
+        if (!admin) throw new Error("Unauthorized");
 
         // Validate program type if provided
         if (args.programType && !isValidProgramType(args.programType)) {
@@ -68,7 +64,8 @@ export const createProgram = mutation({
             ...args,
             programType: args.programType || PROGRAM_TYPES.GENERIC,
             isActive: false,
-            stageIds: []
+            stageIds: [],
+            uuid: generateUuid(),
         });
 
         // Audit Log
@@ -84,9 +81,7 @@ export const createProgram = mutation({
     }
 });
 
-/**
- * Updates a program
- */
+/** Updates a program. */
 export const updateProgram = mutation({
     args: {
         programId: v.id("programs"),
@@ -108,6 +103,7 @@ export const updateProgram = mutation({
     },
     handler: async (ctx, args) => {
         const admin = await ensureAdmin(ctx);
+        if (!admin) throw new Error("Unauthorized");
         const { programId, ...updates } = args;
 
         const program = await ctx.db.get(programId);
@@ -147,9 +143,7 @@ export const updateProgram = mutation({
     }
 });
 
-/**
- * Update a program's viewConfig (role-based visibility settings)
- */
+/** Update a program's viewConfig (role-based visibility settings). */
 export const updateProgramViewConfig = mutation({
     args: {
         programId: v.id("programs"),
@@ -157,6 +151,7 @@ export const updateProgramViewConfig = mutation({
     },
     handler: async (ctx, args) => {
         const admin = await ensureAdmin(ctx);
+        if (!admin) throw new Error("Unauthorized");
 
         const program = await ctx.db.get(args.programId);
         if (!program) throw new Error("Program not found");
@@ -181,9 +176,7 @@ export const updateProgramViewConfig = mutation({
     }
 });
 
-/**
- * Get a single program filtered by current user's role visibility
- */
+/** Get a single program filtered by current user's role visibility. */
 export const getProgramForRole = query({
     args: { programId: v.id("programs") },
     handler: async (ctx, args) => {
@@ -205,7 +198,7 @@ export const getProgramForRole = query({
         }
 
         // Admin always has access
-        if (user.systemRole === 'admin') {
+        if (isAdmin(user.systemRole)) {
             return program;
         }
 
@@ -213,9 +206,7 @@ export const getProgramForRole = query({
     }
 });
 
-/**
- * Get all programs visible to the current user based on their role
- */
+/** Get all programs visible to the current user based on their role. */
 export const getVisiblePrograms = query({
     args: { programType: v.optional(v.string()) },
     handler: async (ctx, args) => {
@@ -223,7 +214,7 @@ export const getVisiblePrograms = query({
         if (!user) return [];
 
         const roleSlug = user.systemRole || "guest";
-        const isAdmin = user.systemRole === 'admin';
+        const isAdminUser = isAdmin(user.systemRole);
 
         let programs;
         if (args.programType) {
@@ -238,7 +229,7 @@ export const getVisiblePrograms = query({
         // Filter by viewConfig visibility
         return programs.filter(program => {
             // Admin sees all
-            if (isAdmin) return true;
+            if (isAdminUser) return true;
 
             // If no viewConfig, default visible
             if (!program.viewConfig) return true;
@@ -253,9 +244,7 @@ export const getVisiblePrograms = query({
     }
 });
 
-/**
- * Get a single program (Admin or public if needed, but here simple fetch)
- */
+/** Get a single program (Admin or public if needed). */
 export const getProgram = query({
     args: { programId: v.id("programs") },
     handler: async (ctx, args) => {

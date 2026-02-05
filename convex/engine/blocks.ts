@@ -2,6 +2,8 @@ import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import { ensureAdmin } from "../core/auth";
 import { getBlockConfigValidator, hasBlockValidator } from "./validators/blocks";
+import { isStaffRole } from "../core/accessControl";
+import { generateUuid } from "./utils";
 
 function validateBlockConfig(type: string, config: unknown): void {
     if (!hasBlockValidator(type)) {
@@ -30,7 +32,7 @@ export const createBlock = mutation({
     handler: async (ctx, args) => {
         await ensureAdmin(ctx);
         validateBlockConfig(args.type, args.config);
-        return await ctx.db.insert("block_instances", { ...args, version: 1 });
+        return await ctx.db.insert("block_instances", { ...args, version: 1, uuid: generateUuid() });
     },
 });
 
@@ -73,6 +75,7 @@ export const forkBlock = mutation({
             config: original.config,
             version: 1,
             parentId: original._id,
+            uuid: generateUuid(),
         });
 
         return newId;
@@ -104,7 +107,7 @@ export const getStageBlocks = query({
         const program = await ctx.db.get(stage.programId);
         if (!program) return [];
 
-        const isAdminOrReviewer = ['admin', 'manager', 'lead', 'officer'].includes(user.systemRole || "") || user.systemRole === "admin";
+        const isAdminOrReviewer = isStaffRole(user.systemRole);
 
         // Check Access
         if (!isAdminOrReviewer) {
@@ -178,7 +181,7 @@ export const createBlocksBatch = mutation({
         }
         const ids = [];
         for (const b of args.blocks) {
-            const id = await ctx.db.insert("block_instances", { ...b, version: 1 });
+            const id = await ctx.db.insert("block_instances", { ...b, version: 1, uuid: generateUuid() });
             ids.push(id);
         }
         return ids;
@@ -200,6 +203,7 @@ export const duplicateBlock = mutation({
             config: original.config,
             version: 1,
             parentId: original._id,
+            uuid: generateUuid(),
         });
 
         return newId;

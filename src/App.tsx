@@ -5,45 +5,16 @@ import { api } from "../convex/_generated/api";
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 
-// Pages & Components
-import LandingPage from "./domains/ops/landing/LandingPage";
-import LoginPage from "./domains/users/auth/LoginPage";
-import RegisterPage from "./domains/users/auth/RegisterPage";
+// Auth & Pages
+import LoginPage from "./core/pages/LoginPage";
+import RegisterPage from "./core/pages/RegisterPage";
+import LandingPage from "./core/pages/LandingPage";
+import AdminDashboard from "./core/pages/AdminDashboard";
+import DashboardView from "./engine/views/DashboardView";
+
+// Layouts
 import DashboardLayout from "./core/layouts/DashboardLayout";
 import RoleGuard from "./core/layouts/RoleGuard";
-
-// Unified Dashboard (replaces role-specific dashboards)
-import UnifiedDashboard from "./domains/ops/dashboard/UnifiedDashboard";
-import ApplicationPortal from "./engine/views/ApplicationPortal";
-import ProcessView from "./engine/views/ProcessView";
-import AdminDashboard from "./domains/admin/AdminDashboard";
-import SystemSettings from "./domains/admin/SystemSettings";
-import SettingsPage from "./domains/users/settings/SettingsPage";
-import AdminProgramList from "./domains/admin/programs/AdminProgramList";
-import ProgramDesigner from "./domains/admin/programs/ProgramDesigner";
-import ProgramSettings from "./domains/admin/programs/ProgramSettings";
-import DataIntegrityDashboard from "./domains/admin/DataIntegrityDashboard";
-import OrganizationDesigner from "./domains/admin/OrganizationDesigner";
-import RoleManagement from "./domains/admin/RoleManagement";
-import ShiftsPage from "./domains/ops/shifts/ShiftsPage";
-// Specialized Modules
-import GoalsPage from "./domains/hr/goals/GoalsPage";
-import TimesheetsPage from "./domains/hr/timesheets/TimesheetsPage";
-import PerformanceDashboard from "./domains/hr/performance/PerformanceDashboard";
-import ReviewSubmissionForm from "./domains/hr/performance/ReviewSubmissionForm";
-import PromotionProcess from "./domains/hr/performance/PromotionProcess";
-import ResignationPage from "./domains/hr/offboarding/ResignationPage";
-import ExitProcess from "./domains/hr/offboarding/ExitProcess";
-import AlumniNetwork from "./domains/hr/alumni/AlumniNetwork";
-
-import IncidentReport from "./domains/compliance/IncidentReport";
-import ComplianceDashboard from "./domains/admin/compliance/ComplianceDashboard";
-import ReimbursementForm from "./domains/ops/finance/ReimbursementForm";
-
-
-
-import UserManagement from "./domains/admin/UserManagement";
-
 
 // Component to handle user syncing
 function UserIdSync() {
@@ -59,6 +30,15 @@ function UserIdSync() {
 
   if (error) return <div className="text-red-500 text-sm">{error}</div>;
   return null;
+}
+
+// Redirect logic
+function RedirectToHome() {
+  const user = useQuery(api.core.users.getMe);
+  if (user === undefined) return <Loader2 className="animate-spin text-brand-blue" />;
+
+  // Everyone goes to dashboard now
+  return <Navigate to="/dashboard" replace />;
 }
 
 // Protected Route wrapper
@@ -96,26 +76,25 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
-
-
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
+        {/* Public Routes */}
         <Route path="/login" element={
           <>
-            <Authenticated><Navigate to="/dashboard" /></Authenticated>
+            <Authenticated><RedirectToHome /></Authenticated>
             <Unauthenticated><LoginPage /></Unauthenticated>
           </>
         } />
         <Route path="/register" element={
           <>
-            <Authenticated><Navigate to="/dashboard" /></Authenticated>
+            <Authenticated><RedirectToHome /></Authenticated>
             <Unauthenticated><RegisterPage /></Unauthenticated>
           </>
         } />
+        <Route path="/" element={<LandingPage />} />
 
-        {/* Unified Dashboard Route */}
+        {/* Dashboard Routes */}
         <Route path="/dashboard" element={
           <ProtectedRoute>
             <DashboardLayout>
@@ -123,111 +102,22 @@ function App() {
             </DashboardLayout>
           </ProtectedRoute>
         }>
-          {/* Main dashboard - dynamic content based on role from backend */}
-          <Route index element={<UnifiedDashboard />} />
+          {/* Main dashboard */}
+          <Route index element={<DashboardView />} />
 
-          {/* Admin Routes - protected by RoleGuard */}
+          {/* Admin Section */}
           <Route path="admin" element={
             <RoleGuard allowedRoles={['admin']}>
-              <AdminDashboard />
+              <Outlet />
             </RoleGuard>
-          } />
-
-          <Route path="admin/settings" element={
-            <RoleGuard allowedRoles={['admin']}>
-              <SystemSettings />
-            </RoleGuard>
-          } />
-
-          <Route path="admin/integrity" element={
-            <RoleGuard allowedRoles={['admin']}>
-              <DataIntegrityDashboard />
-            </RoleGuard>
-          } />
-
-          <Route path="admin/org" element={
-            <RoleGuard allowedRoles={['admin']}>
-              <OrganizationDesigner />
-            </RoleGuard>
-          } />
-
-          <Route path="admin/roles" element={
-            <RoleGuard allowedRoles={['admin']}>
-              <RoleManagement />
-            </RoleGuard>
-          } />
-
-          <Route path="admin/users" element={
-            <RoleGuard allowedRoles={['admin']}>
-              <UserManagement />
-            </RoleGuard>
-          } />
-          {/* Program Management */}
-          <Route path="admin/programs" element={
-            <RoleGuard allowedRoles={['admin']}>
-              <AdminProgramList />
-            </RoleGuard>
-          } />
-
-          <Route path="admin/programs/:programId/design" element={
-            <RoleGuard allowedRoles={['admin']}>
-              <ProgramDesigner />
-            </RoleGuard>
-          } />
-
-          <Route path="admin/programs/:programId/settings" element={
-            <RoleGuard allowedRoles={['admin']}>
-              <ProgramSettings />
-            </RoleGuard>
-          } />
-          <Route path="settings" element={<SettingsPage />} />
-
-          {/* Operations & Engagement */}
-          <Route path="shifts" element={<ShiftsPage />} />
-          <Route path="goals" element={<GoalsPage />} />
-          <Route path="timesheets" element={<TimesheetsPage />} />
-
-
-
-          {/* Performance & Feedback */}
-          <Route path="performance" element={<PerformanceDashboard />} />
-          <Route path="performance/review/:type/:id" element={<ReviewSubmissionForm />} />
-          <Route path="performance/promote" element={
-            <RoleGuard allowedRoles={['manager', 'admin', 'lead']}>
-              <PromotionProcess />
-            </RoleGuard>
-          } />
-
-          {/* Offboarding & Alumni */}
-          <Route path="offboarding/resign" element={<ResignationPage />} />
-          <Route path="offboarding/exit" element={<ExitProcess />} />
-          <Route path="alumni" element={<AlumniNetwork />} />
-
-          {/* Compliance & Finance */}
-          <Route path="compliance/report" element={<IncidentReport />} />
-          <Route path="finance/reimbursements" element={<ReimbursementForm />} />
-
-          <Route path="admin/compliance" element={
-            <RoleGuard allowedRoles={['admin']}>
-              <ComplianceDashboard />
-            </RoleGuard>
-          } />
-
-
-          {/* Process & Program Routes */}
-          <Route path="program/:programId" element={<ApplicationPortal />} />
-          <Route path="process/:processId" element={<ProcessView />} />
+          }>
+            <Route index element={<AdminDashboard />} />
+            {/* Future Admin Routes will go here, currently disabled/cleaned up */}
+          </Route>
         </Route>
 
-        {/* Legacy role-based routes - redirect to unified dashboard */}
-        <Route path="/dashboard/guest" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard/member" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard/manager" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard/lead" element={<Navigate to="/dashboard" replace />} />
-
-        {/* Catch-all for other legacy routes */}
-        <Route path="/applicant/*" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/reviewer/*" element={<Navigate to="/dashboard" replace />} />
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
   );

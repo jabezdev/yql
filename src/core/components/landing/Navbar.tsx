@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useConvexAuth } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
+import { useClerk } from "@clerk/clerk-react";
+import { api } from "../../../../convex/_generated/api";
 import { Container, Button } from '../ui';
 import { NAV_LINKS } from '../../constants';
 
@@ -9,6 +11,26 @@ export default function Navbar() {
     const [isOpen, setIsOpen] = useState(false);
     const navigate = useNavigate();
     const { isAuthenticated } = useConvexAuth();
+    const { signOut } = useClerk();
+    // Fetch user to check role
+    const user = useQuery(api.core.users.getMe);
+    // Determine target path
+
+    // const buttonLabel = user?.systemRole === 'admin' ? 'Admin Panel' : 'Sign Out';
+
+    const handleAuthClick = () => {
+        if (!isAuthenticated) {
+            navigate('/login');
+            return;
+        }
+
+        if (user?.systemRole === 'admin') {
+            navigate('/dashboard/admin');
+        } else {
+            // Guests just sign out for now since dashboard is closed
+            signOut();
+        }
+    };
 
     const closeMenu = () => setIsOpen(false);
 
@@ -33,7 +55,7 @@ export default function Navbar() {
                         </a>
                     ))}
                     <Button
-                        onClick={() => navigate(isAuthenticated ? '/dashboard' : '/login')}
+                        onClick={handleAuthClick}
                         variant="geometric-primary"
                         size="md"
                         className="py-2"
@@ -71,7 +93,7 @@ export default function Navbar() {
                         size="lg"
                         onClick={() => {
                             closeMenu();
-                            navigate(isAuthenticated ? '/dashboard' : '/login');
+                            handleAuthClick();
                         }}
                     >
                         {isAuthenticated ? 'Dashboard' : 'Log in'}

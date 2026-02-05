@@ -5,14 +5,13 @@ export default defineSchema({
     users: defineTable({
         email: v.string(),
         name: v.string(),
+        uuid: v.optional(v.string()),
 
-        // System Access (Gatekeeper)
-        // Links to 'roles' table via slug
+        // System Access (Gatekeeper). Hardcoded Roles: guest, member, manager, lead, admin.
         systemRole: v.optional(v.string()),
 
-        // Hierarchy & Permissions
-        // Roles are defined in 'roles' table and linked via systemRole
-
+        // Special Roles (e.g. "Recruiter")
+        specialRoleIds: v.optional(v.array(v.id("special_roles"))),
 
         tokenIdentifier: v.optional(v.string()),
 
@@ -26,7 +25,13 @@ export default defineSchema({
                 startDate: v.optional(v.number()),
                 endDate: v.optional(v.number()),
             })),
-            status: v.string(), // "candidate", "active", "on_leave", "alumni", "probation"
+            // HR Status: "candidate", "active", "alumni", "blocked"
+            status: v.union(
+                v.literal("candidate"),
+                v.literal("active"),
+                v.literal("alumni"),
+                v.literal("blocked")
+            ),
             joinDate: v.optional(v.number()),
             exitDate: v.optional(v.number()),
             exitReason: v.optional(v.string()),
@@ -58,7 +63,8 @@ export default defineSchema({
     })
         .index("by_email", ["email"])
         .index("by_tokenIdentifier", ["tokenIdentifier"])
-        .index("by_system_role", ["systemRole"]),
+        .index("by_system_role", ["systemRole"])
+        .index("by_uuid", ["uuid"]),
 
     // ============================================
     // ORGANIZATION STRUCTURE
@@ -67,6 +73,7 @@ export default defineSchema({
     departments: defineTable({
         name: v.string(),
         slug: v.string(),
+        uuid: v.optional(v.string()),
         description: v.optional(v.string()),
         headId: v.optional(v.id("users")), // Department head
         parentDepartmentId: v.optional(v.id("departments")), // For nested structures
@@ -80,7 +87,8 @@ export default defineSchema({
     })
         .index("by_slug", ["slug"])
         .index("by_parent", ["parentDepartmentId"])
-        .index("by_active", ["isActive"]),
+        .index("by_active", ["isActive"])
+        .index("by_uuid", ["uuid"]),
 
     // ============================================
     // AUDIT & LOGGING
@@ -94,11 +102,13 @@ export default defineSchema({
         changes: v.optional(v.any()), // { before: {...}, after: {...} }
         metadata: v.optional(v.any()), // Additional context
         createdAt: v.number(),
+        uuid: v.optional(v.string()),
     })
         .index("by_entity", ["entityType", "entityId"])
         .index("by_user", ["userId"])
         .index("by_action", ["action"])
-        .index("by_created", ["createdAt"]),
+        .index("by_created", ["createdAt"])
+        .index("by_uuid", ["uuid"]),
 
     // ============================================
     // RATE LIMITING
@@ -155,45 +165,31 @@ export default defineSchema({
         // Soft delete
         isDeleted: v.optional(v.boolean()),
         deletedAt: v.optional(v.number()),
+        uuid: v.optional(v.string()),
     })
         .index("by_user", ["userId"])
         .index("by_unread", ["userId", "isRead"])
-        .index("by_type", ["type"]),
+        .index("by_type", ["type"])
+        .index("by_uuid", ["uuid"]),
 
     // ============================================
     // ROLES & PERMISSIONS
     // ============================================
 
-    roles: defineTable({
-        slug: v.string(), // e.g. "guest", "member"
+    // SYSTEM ROLES are now Hardcoded Constants (Guest, Member, Manager, Lead, Admin)
+    // This table is for SPECIAL/ADDITIVE roles (Recruiter, Interviewer, Event Coordinator)
+    special_roles: defineTable({
+        slug: v.string(), // "recruiter", "interviewer"
         name: v.string(), // Display name
         description: v.optional(v.string()),
-        // Legacy UI permissions (kept for compatibility)
-        uiPermissions: v.array(v.string()),
-        // Granular permissions
+        // Resource-centric access only
         permissions: v.optional(v.array(v.object({
             resource: v.string(), // "users", "processes", "programs", "departments"
             actions: v.array(v.string()), // ["read", "create", "update", "delete"]
             scope: v.optional(v.string()), // "own", "department", "all"
         }))),
-        // allowedProcessTypes MOVED to programs table (Inversion of Control)
-        defaultDashboardSlug: v.optional(v.string()),
-        isSystemRole: v.optional(v.boolean()), // Prevent modification of core roles
     }).index("by_slug", ["slug"]),
 
-    dashboards: defineTable({
-        slug: v.string(), // e.g. "guest_dashboard"
-        name: v.string(),
-        description: v.optional(v.string()),
-        // Layout Config: list of rows/cols OR simple list of blockIds
-        layout: v.array(v.object({
-            blockId: v.id("block_instances"),
-            width: v.optional(v.number()), // Grid columns (e.g. 12 max)
-            config: v.optional(v.any()), // Override config unique to this placement
-        })),
-    }).index("by_slug", ["slug"]),
-
-    // stage_types table removed - now hardcoded constants
 
     block_instances: defineTable({
         type: v.string(), // "text_display", "input_text", "file_upload", etc.
@@ -208,6 +204,7 @@ export default defineSchema({
             canView: v.boolean(),       // Visible to this role?
             canEdit: v.optional(v.boolean()), // Can interact/edit?
         }))),
+        uuid: v.optional(v.string()),
     }),
 
     stage_templates: defineTable({
@@ -252,11 +249,14 @@ export default defineSchema({
         // Soft Delete
         isDeleted: v.optional(v.boolean()),
         deletedAt: v.optional(v.number()),
-    }).index("by_program", ["programId"]), // Renamed index
+        uuid: v.optional(v.string()),
+    }).index("by_program", ["programId"]) // Renamed index
+        .index("by_uuid", ["uuid"]),
 
     programs: defineTable({
         name: v.string(), // e.g., "Batch 2026", "Q1 Performance Review"
         slug: v.string(), // e.g., "batch-2026"
+        uuid: v.optional(v.string()),
         category: v.optional(v.string()), // "recruitment", "operations", "performance", "onboarding"
         description: v.optional(v.string()),
 
@@ -305,7 +305,8 @@ export default defineSchema({
     })
         .index("by_slug", ["slug"])
         .index("by_active", ["isActive"])
-        .index("by_type", ["programType"]),
+        .index("by_type", ["programType"])
+        .index("by_uuid", ["uuid"]),
 
     processes: defineTable({
         userId: v.id("users"),
@@ -323,16 +324,32 @@ export default defineSchema({
         status: v.string(), // "in_progress", "approved", "rejected", "withdrawn"
 
         // Data Store
+        // Data Store
         data: v.optional(v.any()), // { [stageId]: { ... } }
+
+        // Visibility Level (Scalability Fix)
+        // The minimum role level required to view this process (Hierarchical).
+        // derived from ROLE_HIERARCHY.
+        requiredRoleLevel: v.optional(v.number()),
+
+        // Resilience: Config Snapshotting
+        // Snapshot of the stage flow at the time of creation to prevent breaking changes
+        // limits the process to a specific path version.
+        stageFlowSnapshot: v.optional(v.array(v.id("stages"))),
 
         updatedAt: v.number(),
         // Soft delete
         isDeleted: v.optional(v.boolean()),
         deletedAt: v.optional(v.number()),
+        uuid: v.optional(v.string()),
     })
         .index("by_user", ["userId"])
         .index("by_type", ["type"])
-        .index("by_department", ["departmentId"]),
+        .index("by_department", ["departmentId"])
+        // Scalability Index: efficiently filter out high-security processes
+        // Compound with updatedAt to allow "Merge Sort" pagination across levels
+        .index("by_role_level_time", ["requiredRoleLevel", "updatedAt"])
+        .index("by_uuid", ["uuid"]),
 
     reviews: defineTable({
         processId: v.id("processes"), // Replaces applicationId
@@ -342,9 +359,11 @@ export default defineSchema({
         generalNotes: v.optional(v.string()),
         blockData: v.optional(v.any()), // JSON: { [blockId]: { score: 10, comment: "Good", availability: [...] } }
         createdAt: v.number(),
+        uuid: v.optional(v.string()),
     })
         .index("by_process", ["processId"])
-        .index("by_stage_process", ["stageId", "processId"]),
+        .index("by_stage_process", ["stageId", "processId"])
+        .index("by_uuid", ["uuid"]),
 
     // Generic Events (Shifts, Interviews, Meetings)
     events: defineTable({
@@ -363,29 +382,12 @@ export default defineSchema({
         // Soft delete
         isDeleted: v.optional(v.boolean()),
         deletedAt: v.optional(v.number()),
+        uuid: v.optional(v.string()),
     })
         .index("by_block", ["blockId"])
         .index("by_start_time", ["startTime"])
-        .index("by_type", ["type"]),
-
-    timesheets: defineTable({
-        userId: v.id("users"),
-        shiftId: v.optional(v.id("events")), // Linked to specific shift
-        date: v.number(),
-        durationMinutes: v.number(),
-        activityDescription: v.string(),
-        status: v.string(), // "pending", "approved", "rejected"
-        approverId: v.optional(v.id("users")),
-        rejectionReason: v.optional(v.string()),
-        createdAt: v.number(),
-        updatedAt: v.number(),
-        // Soft delete
-        isDeleted: v.optional(v.boolean()),
-        deletedAt: v.optional(v.number()),
-    })
-        .index("by_user", ["userId"])
-        .index("by_status", ["status"])
-        .index("by_shift", ["shiftId"]),
+        .index("by_type", ["type"])
+        .index("by_uuid", ["uuid"]),
 
     files: defineTable({
         storageId: v.string(), // The Convex Storage ID
@@ -397,7 +399,8 @@ export default defineSchema({
         // Soft delete
         isDeleted: v.optional(v.boolean()),
         deletedAt: v.optional(v.number()),
-    }).index("by_storageId", ["storageId"]).index("by_user", ["userId"]),
+        uuid: v.optional(v.string()),
+    }).index("by_storageId", ["storageId"]).index("by_user", ["userId"]).index("by_uuid", ["uuid"]),
 
     // ============================================
     // MATRIX MANAGER RELATIONSHIPS
@@ -418,93 +421,5 @@ export default defineSchema({
         .index("by_user", ["userId"])
         .index("by_manager", ["managerId"])
         .index("by_context", ["context"]),
-
-    // ============================================
-    // PERFORMANCE REVIEWS & TALENT DEVELOPMENT
-    // ============================================
-
-    review_cycles: defineTable({
-        name: v.string(),                 // "Q4 2026 Performance Review"
-        programId: v.optional(v.id("programs")),
-        startDate: v.number(),
-        endDate: v.number(),
-        status: v.string(),               // "draft", "active", "calibration", "completed"
-        selfReviewDeadline: v.optional(v.number()),
-        managerReviewDeadline: v.optional(v.number()),
-        peerReviewDeadline: v.optional(v.number()),
-        // Configuration
-        config: v.optional(v.object({
-            includeSelfReview: v.boolean(),
-            includePeerReview: v.boolean(),
-            includeManagerReview: v.boolean(),
-            peerReviewsPerPerson: v.optional(v.number()), // How many peers review each person
-            groupingStrategy: v.optional(v.string()), // "same_department", "random", "manual"
-        })),
-    })
-        .index("by_status", ["status"])
-        .index("by_program", ["programId"]),
-
-    peer_review_assignments: defineTable({
-        cycleId: v.id("review_cycles"),
-        reviewerId: v.id("users"),        // Who reviews (anonymous)
-        revieweeId: v.id("users"),        // Who is reviewed
-        isAnonymous: v.boolean(),         // Always true for peer reviews
-        status: v.string(),               // "pending", "in_progress", "submitted"
-        data: v.optional(v.any()),        // Review data (scored questions, comments)
-        submittedAt: v.optional(v.number()),
-    })
-        .index("by_cycle", ["cycleId"])
-        .index("by_reviewer", ["reviewerId"])
-        .index("by_reviewee", ["revieweeId"])
-        .index("by_status", ["status"]),
-
-    goals: defineTable({
-        userId: v.id("users"),
-        cycleId: v.optional(v.id("review_cycles")),
-        title: v.string(),
-        description: v.optional(v.string()),
-        status: v.string(),               // "in_progress", "completed", "cancelled"
-        progress: v.optional(v.number()), // 0-100
-        dueDate: v.optional(v.number()),
-        createdAt: v.number(),
-        updatedAt: v.number(),
-        // Soft delete
-        isDeleted: v.optional(v.boolean()),
-        deletedAt: v.optional(v.number()),
-    })
-        .index("by_cycle", ["cycleId"])
-        .index("by_status", ["status"])
-        .index("by_user", ["userId"]),
-
-    self_reviews: defineTable({
-        cycleId: v.id("review_cycles"),
-        userId: v.id("users"),           // The reviewer (and reviewee)
-        status: v.string(),               // "in_progress", "submitted"
-        data: v.optional(v.any()),        // Review data
-        submittedAt: v.optional(v.number()),
-        // Soft delete
-        isDeleted: v.optional(v.boolean()),
-        deletedAt: v.optional(v.number()),
-    })
-        .index("by_cycle_user", ["cycleId", "userId"])
-        .index("by_status", ["status"]),
-
-    manager_reviews: defineTable({
-        cycleId: v.id("review_cycles"),
-        reviewerId: v.id("users"),        // The manager
-        revieweeId: v.id("users"),        // The direct report
-        status: v.string(),               // "in_progress", "submitted", "shared"
-        data: v.optional(v.any()),        // Private manager assessment
-        sharedData: v.optional(v.any()),  // Feedback shared with employee
-        rating: v.optional(v.number()),   // Numerical rating
-        submittedAt: v.optional(v.number()),
-        sharedAt: v.optional(v.number()), // When it was revealed to employee
-        // Soft delete
-        isDeleted: v.optional(v.boolean()),
-        deletedAt: v.optional(v.number()),
-    })
-        .index("by_cycle_reviewer", ["cycleId", "reviewerId"])
-        .index("by_cycle_reviewee", ["cycleId", "revieweeId"])
-        .index("by_status", ["status"]),
 });
 

@@ -4,12 +4,22 @@ import { Loader2 } from "lucide-react";
 
 interface RoleGuardProps {
     children: React.ReactNode;
-    allowedRoles?: string[];
-    requiredPermission?: string;
+    allowedRoles?: string[];       // Exact match (any of these roles)
+    minimumRole?: string;          // Hierarchy check (>= this role level)
+    requiredSpecialRole?: string;  // Must have this special role
+    requireActive?: boolean;       // Must have HR_STATUS = active
+    requiredPermission?: string;   // Legacy, deprecated
 }
 
-export default function RoleGuard({ children, allowedRoles, requiredPermission }: RoleGuardProps) {
-    const { role, hasPermission, isLoading } = usePermissions();
+export default function RoleGuard({
+    children,
+    allowedRoles,
+    minimumRole,
+    requiredSpecialRole,
+    requireActive = false,
+    requiredPermission
+}: RoleGuardProps) {
+    const { role, isLoading, isBlocked, isActive, hasMinRole, hasSpecialRole } = usePermissions();
     const location = useLocation();
 
     if (isLoading) {
@@ -20,18 +30,39 @@ export default function RoleGuard({ children, allowedRoles, requiredPermission }
         );
     }
 
-    // 1. Check Role Access
-    if (allowedRoles && !allowedRoles.includes(role)) {
-        // Redirect to their default dashboard if they try to access a forbidden area
-        // Or generic "Unauthorized" page. For now, redirect to root dashboard handles dispatch.
-        console.warn(`Access denied for role: ${role}. Required: ${allowedRoles.join(", ")}`);
-        return <Navigate to="/dashboard" replace state={{ from: location }} />;
+    // Block blocked users first (highest priority)
+    if (isBlocked) {
+        console.warn("Access denied: User account is blocked");
+        return <Navigate to="/" replace state={{ from: location, reason: "blocked" }} />;
     }
 
-    // 2. Check Permission Access
-    if (requiredPermission && !hasPermission(requiredPermission)) {
-        console.warn(`Access denied. Missing permission: ${requiredPermission}`);
-        return <Navigate to="/dashboard" replace state={{ from: location }} />;
+    // Check if active status is required
+    if (requireActive && !isActive) {
+        console.warn(`Access denied: Active status required (current status: not active)`);
+        return <Navigate to="/" replace state={{ from: location, reason: "inactive" }} />;
+    }
+
+    // Check minimum role (hierarchy-based)
+    if (minimumRole && !hasMinRole(minimumRole)) {
+        console.warn(`Access denied: Requires at least ${minimumRole} role (current: ${role})`);
+        return <Navigate to="/" replace state={{ from: location }} />;
+    }
+
+    // Check allowed roles (exact match, any of)
+    if (allowedRoles && !allowedRoles.includes(role)) {
+        console.warn(`Access denied for role: ${role}. Required: ${allowedRoles.join(", ")}`);
+        return <Navigate to="/" replace state={{ from: location }} />;
+    }
+
+    // Check special role requirement
+    if (requiredSpecialRole && !hasSpecialRole(requiredSpecialRole)) {
+        console.warn(`Access denied: Missing special role: ${requiredSpecialRole}`);
+        return <Navigate to="/" replace state={{ from: location }} />;
+    }
+
+    // Legacy permission check (deprecated)
+    if (requiredPermission) {
+        console.warn("requiredPermission is deprecated in RoleGuard. Use minimumRole or allowedRoles.");
     }
 
     return <>{children}</>;

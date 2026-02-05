@@ -38,6 +38,7 @@ export const updateSetting = mutation({
     },
     handler: async (ctx, args) => {
         const admin = await ensureAdmin(ctx);
+        if (!admin) throw new Error("Unauthorized");
 
         const existing = await ctx.db
             .query("system_settings")

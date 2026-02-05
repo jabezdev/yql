@@ -3,11 +3,10 @@ import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import { getViewer, ensureAdmin } from "./auth";
 import { createAuditLog } from "./auditLog";
+import { HR_STATUSES, SYSTEM_ROLES } from "./constants";
+import { generateUuid } from "../engine/utils";
 
-/**
- * Syncs the Clerk user to the Convex users table.
- * Should be called on app load.
- */
+/** Syncs the Clerk user to the Convex users table on app load. */
 export const storeUser = mutation({
     args: {},
     handler: async (ctx) => {
@@ -47,12 +46,13 @@ export const storeUser = mutation({
             name: identity.name!,
             email: identity.email!,
             tokenIdentifier: identity.tokenIdentifier,
-            systemRole: "guest",
+            systemRole: SYSTEM_ROLES.GUEST,
             profile: {
                 positions: [],
-                status: "candidate", // generic status
+                status: HR_STATUSES.CANDIDATE, // generic status
                 joinDate: Date.now(),
-            }
+            },
+            uuid: generateUuid(),
         });
 
         // Audit Log (New User)
@@ -68,10 +68,7 @@ export const storeUser = mutation({
     },
 });
 
-/**
- * Creates a staff member with elevated access.
- * More generic than the old "createReviewer" - can be used for any staff role.
- */
+/** Creates a staff member with elevated access (generic). */
 export const createStaffMember = mutation({
     args: {
         email: v.string(),
@@ -100,20 +97,22 @@ export const createStaffMember = mutation({
         const userId = await ctx.db.insert("users", {
             email: args.email,
             name: args.name,
-            systemRole: args.systemRole || "member",
+            systemRole: args.systemRole || SYSTEM_ROLES.MEMBER,
             profile: {
                 positions: args.title ? [{
                     title: args.title,
                     departmentId: args.departmentId,
                     isPrimary: true
                 }] : [],
-                status: "active",
+                status: HR_STATUSES.ACTIVE,
                 joinDate: Date.now(),
             },
+            uuid: generateUuid(),
         });
 
         // Audit Log
         const admin = await ensureAdmin(ctx);
+        if (!admin) throw new Error("Unauthorized");
         await createAuditLog(ctx, {
             userId: admin._id,
             action: "user.create",
@@ -126,10 +125,7 @@ export const createStaffMember = mutation({
     },
 });
 
-/**
- * Gets staff members (Member+).
- * Can filter by department for scoped access.
- */
+/** Gets staff members (Member+). Can filter by department. */
 export const getStaffMembers = query({
     args: { departmentId: v.optional(v.id("departments")) },
     handler: async (ctx, args) => {
@@ -139,11 +135,14 @@ export const getStaffMembers = query({
         const allUsers = await ctx.db.query("users").collect();
 
         // Filter: Exclude guests, candidates, alumni
-        const excludeRoles = ["guest", "candidate", "alumni", "probation"];
+        const excludeRoles = [SYSTEM_ROLES.GUEST]; // Only exclude guests from strict "staff" definition?
+        // HR Status also matters
+        const excludeStatuses = [HR_STATUSES.CANDIDATE, HR_STATUSES.ALUMNI, HR_STATUSES.BLOCKED];
 
         const staffMembers = allUsers.filter(u =>
             u.systemRole &&
-            !excludeRoles.includes(u.systemRole) &&
+            !excludeRoles.includes(u.systemRole as any) &&
+            !excludeStatuses.includes(u.profile?.status as any) &&
             !u.isDeleted
         );
 
@@ -173,7 +172,7 @@ export const getUser = query({
         // For now, allow Admins and Managers to view profiles.
 
         const systemRole = requestor.systemRole;
-        if (systemRole === 'admin' || systemRole === 'manager' || systemRole === 'lead') {
+        if (systemRole === SYSTEM_ROLES.ADMIN || systemRole === SYSTEM_ROLES.MANAGER || systemRole === SYSTEM_ROLES.LEAD) {
             const user = await ctx.db.get(args.id);
             if (!user || user.isDeleted) return null;
             return user;
@@ -192,10 +191,7 @@ export const getMe = query({
 
 
 
-/**
- * Onboards a user to a specific program/process.
- * Creates user if they don't exist, and creates or updates their process.
- */
+/** Onboards a user to a program/process, creating them if needed. */
 export const onboardUser = mutation({
     args: {
         email: v.string(),
@@ -216,8 +212,9 @@ export const onboardUser = mutation({
             userId = await ctx.db.insert("users", {
                 email: args.email,
                 name: args.name,
-                systemRole: "guest",
-                profile: { positions: [], status: "candidate", joinDate: Date.now() }
+                systemRole: SYSTEM_ROLES.GUEST,
+                profile: { positions: [], status: HR_STATUSES.CANDIDATE, joinDate: Date.now() },
+                uuid: generateUuid(),
             });
 
             // Audit Log
@@ -260,10 +257,7 @@ export const onboardUser = mutation({
     }
 });
 
-/**
- * Update own profile (Self-service)
- * Allows updating contact info, privacy settings, and custom fields.
- */
+/** Update own profile (Self-service). */
 export const updateProfile = mutation({
     args: {
         privacyLevel: v.optional(v.string()), // "public", "members_only", "leads_only", "private"
@@ -283,7 +277,7 @@ export const updateProfile = mutation({
         const updates: Record<string, unknown> = {};
 
         // Merge profile updates
-        const currentProfile = viewer.profile || { positions: [], status: "active", joinDate: Date.now() };
+        const currentProfile = viewer.profile || { positions: [], status: HR_STATUSES.ACTIVE, joinDate: Date.now() };
         const updatedProfile = { ...currentProfile };
 
         if (args.privacyLevel) {
